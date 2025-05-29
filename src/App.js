@@ -366,10 +366,15 @@ function Posts() {
     }));
   };
 
-  const deletePost = async (postId) => {
+const deletePost = async (postId) => {
+  console.log("Trying to delete post:", postId);
+  try {
     await deleteDoc(doc(db, "posts", postId));
     setConfirmDelete(null);
-  };
+  } catch (err) {
+    console.error("Error deleting post:", err);
+  }
+};
 
   const filteredPosts = posts.filter((post) => {
     const text = searchText.toLowerCase();
@@ -457,32 +462,47 @@ function Posts() {
       )}
 
       {confirmDelete && (
-        <div
-          style={{
-            backgroundColor: "#fff",
-            color: "#121212",
-            padding: 20,
-            borderRadius: 8,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-            marginTop: 20,
-            maxWidth: 400,
-          }}
+  <div style={{
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999
+  }}>
+    <div style={{
+      backgroundColor: "#fff",
+      color: "#121212",
+      padding: 30,
+      borderRadius: 10,
+      width: 350,
+      textAlign: "center",
+      boxShadow: "0 4px 10px rgba(0,0,0,0.4)"
+    }}>
+      <h3 style={{ marginBottom: 20 }}>Confirm Deletion</h3>
+      <p>Are you sure you want to delete this post?</p>
+      <div style={{ marginTop: 25, display: "flex", justifyContent: "space-between" }}>
+        <button
+          onClick={() => deletePost(confirmDelete)}
+          style={{ ...buttonDangerStyle, flex: 1, marginRight: 10 }}
         >
-          <p>
-            Confirm delete post <b>{confirmDelete}</b>?
-          </p>
-          <button style={buttonDangerStyle} onClick={() => deletePost(confirmDelete)}>
-            Yes
-          </button>
-          <button
-            style={{ ...buttonStyle, marginLeft: 10 }}
-            onClick={() => setConfirmDelete(null)}
-          >
-            No
-          </button>
-        </div>
-      )}
-    </>
+          Yes, Delete
+        </button>
+        <button
+          onClick={() => setConfirmDelete(null)}
+          style={{ ...buttonStyle, flex: 1 }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+   </>
   );
 }
 
