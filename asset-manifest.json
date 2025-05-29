@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/curious-admin-panel/static/css/main.e6c13ad2.css",
-    "main.js": "/curious-admin-panel/static/js/main.48bb40d8.js",
+    "main.js": "/curious-admin-panel/static/js/main.84b5f104.js",
     "static/js/453.b3b29214.chunk.js": "/curious-admin-panel/static/js/453.b3b29214.chunk.js",
     "index.html": "/curious-admin-panel/index.html",
     "main.e6c13ad2.css.map": "/curious-admin-panel/static/css/main.e6c13ad2.css.map",
-    "main.48bb40d8.js.map": "/curious-admin-panel/static/js/main.48bb40d8.js.map",
+    "main.84b5f104.js.map": "/curious-admin-panel/static/js/main.84b5f104.js.map",
     "453.b3b29214.chunk.js.map": "/curious-admin-panel/static/js/453.b3b29214.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.48bb40d8.js"
+    "static/js/main.84b5f104.js"
   ]
 }
