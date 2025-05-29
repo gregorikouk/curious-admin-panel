@@ -297,14 +297,14 @@ function Reports() {
 }
 
 // -- Posts tab --
-
 function Posts() {
   const [posts, setPosts] = useState([]);
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [searchText, setSearchText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null); // Για posts
+  const [confirmDeleteComment, setConfirmDeleteComment] = useState(null); // Για σχόλια
   const [usernames, setUsernames] = useState({});
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentsByPost, setCommentsByPost] = useState({});
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const unsubPosts = onSnapshot(collection(db, "posts"), (snapshot) => {
@@ -328,7 +328,7 @@ function Posts() {
       });
     });
     return () => unsubPosts();
-  }, []);
+  }, [usernames]);
 
   const toggleExpandPost = async (postId) => {
     setExpandedPosts((prev) => ({ ...prev, [postId]: !prev[postId] }));
@@ -359,22 +359,26 @@ function Posts() {
   };
 
   const deleteComment = async (postId, commentId) => {
-    await deleteDoc(doc(db, "posts", postId, "comments", commentId));
-    setCommentsByPost((prev) => ({
-      ...prev,
-      [postId]: prev[postId].filter((c) => c.id !== commentId),
-    }));
+    try {
+      await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+      setCommentsByPost((prev) => ({
+        ...prev,
+        [postId]: prev[postId].filter((c) => c.id !== commentId),
+      }));
+      setConfirmDeleteComment(null);
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+    }
   };
 
-const deletePost = async (postId) => {
-  console.log("Trying to delete post:", postId);
-  try {
-    await deleteDoc(doc(db, "posts", postId));
-    setConfirmDelete(null);
-  } catch (err) {
-    console.error("Error deleting post:", err);
-  }
-};
+  const deletePost = async (postId) => {
+    try {
+      await deleteDoc(doc(db, "posts", postId));
+      setConfirmDelete(null);
+    } catch (err) {
+      console.error("Error deleting post:", err);
+    }
+  };
 
   const filteredPosts = posts.filter((post) => {
     const text = searchText.toLowerCase();
@@ -389,15 +393,35 @@ const deletePost = async (postId) => {
     return String(timestamp);
   };
 
+  const buttonStyle = {
+    padding: "6px 12px",
+    borderRadius: 4,
+    border: "none",
+    cursor: "pointer",
+  };
+
+  const buttonDangerStyle = {
+    ...buttonStyle,
+    backgroundColor: "#d33",
+    color: "white",
+  };
+
   return (
     <>
-      <h2 style={headerStyle}>Posts</h2>
+      <h2 style={{ color: "#121212" }}>Posts</h2>
       <input
         type="text"
         placeholder="Search by post text or author..."
         value={searchText}
         onChange={(e) => setSearchText(e.target.value)}
-        style={inputStyle}
+        style={{
+          marginBottom: 15,
+          width: "100%",
+          padding: 8,
+          borderRadius: 6,
+          border: "1px solid #ccc",
+          fontSize: 16,
+        }}
       />
       {filteredPosts.length === 0 ? (
         <p style={{ color: "#888" }}>No posts found</p>
@@ -419,10 +443,16 @@ const deletePost = async (postId) => {
               <br />
               <small style={{ color: "#555" }}>{formatTimestamp(p.timestamp)}</small>
               <br />
-              <button style={{ ...buttonDangerStyle, marginRight: 10 }} onClick={() => setConfirmDelete(p.id)}>
+              <button
+                style={{ ...buttonDangerStyle, marginRight: 10 }}
+                onClick={() => setConfirmDelete(p.id)}
+              >
                 Delete Post
               </button>
-              <button onClick={() => toggleExpandPost(p.id)} style={buttonStyle}>
+              <button
+                onClick={() => toggleExpandPost(p.id)}
+                style={{ ...buttonStyle }}
+              >
                 {expandedPosts[p.id] ? "Hide Comments" : "Show Comments"}
               </button>
 
@@ -444,8 +474,15 @@ const deletePost = async (postId) => {
                         <br />
                         <small style={{ color: "#555" }}>{formatTimestamp(c.timestamp)}</small>
                         <button
-                          style={{ ...buttonDangerStyle, marginLeft: 10, padding: "4px 10px", fontSize: 12 }}
-                          onClick={() => deleteComment(p.id, c.id)}
+                          style={{
+                            ...buttonDangerStyle,
+                            marginLeft: 10,
+                            padding: "4px 10px",
+                            fontSize: 12,
+                          }}
+                          onClick={() =>
+                            setConfirmDeleteComment({ postId: p.id, commentId: c.id })
+                          }
                         >
                           Delete Comment
                         </button>
@@ -461,48 +498,71 @@ const deletePost = async (postId) => {
         </ul>
       )}
 
+      {/* Confirm διαγραφή post */}
       {confirmDelete && (
-  <div style={{
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100vw",
-    height: "100vh",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999
-  }}>
-    <div style={{
-      backgroundColor: "#fff",
-      color: "#121212",
-      padding: 30,
-      borderRadius: 10,
-      width: 350,
-      textAlign: "center",
-      boxShadow: "0 4px 10px rgba(0,0,0,0.4)"
-    }}>
-      <h3 style={{ marginBottom: 20 }}>Confirm Deletion</h3>
-      <p>Are you sure you want to delete this post?</p>
-      <div style={{ marginTop: 25, display: "flex", justifyContent: "space-between" }}>
-        <button
-          onClick={() => deletePost(confirmDelete)}
-          style={{ ...buttonDangerStyle, flex: 1, marginRight: 10 }}
-        >
-          Yes, Delete
-        </button>
-        <button
-          onClick={() => setConfirmDelete(null)}
-          style={{ ...buttonStyle, flex: 1 }}
-        >
-          Cancel
-        </button>
+        <ConfirmModal
+          title="Confirm Delete Post"
+          message="Are you sure you want to delete this post?"
+          onConfirm={() => deletePost(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {/* Confirm διαγραφή comment */}
+      {confirmDeleteComment && (
+        <ConfirmModal
+          title="Confirm Delete Comment"
+          message="Are you sure you want to delete this comment?"
+          onConfirm={() =>
+            deleteComment(confirmDeleteComment.postId, confirmDeleteComment.commentId)
+          }
+          onCancel={() => setConfirmDeleteComment(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function ConfirmModal({ title, message, onConfirm, onCancel }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0, left: 0, width: "100vw", height: "100vh",
+        backgroundColor: "rgba(0,0,0,0.5)",
+        display: "flex", justifyContent: "center", alignItems: "center",
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: "#222",
+          padding: 20,
+          borderRadius: 8,
+          width: 320,
+          textAlign: "center",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.7)",
+          color: "#eee"
+        }}
+      >
+        <h3>{title}</h3>
+        <p>{message}</p>
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "space-around" }}>
+          <button
+            onClick={onConfirm}
+            style={{ padding: "8px 16px", backgroundColor: "#d33", color: "white", border: "none", borderRadius: 4 }}
+          >
+            Yes, Delete
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ padding: "8px 16px", borderRadius: 4 }}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-)}
-   </>
   );
 }
 
