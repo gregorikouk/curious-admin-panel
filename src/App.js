@@ -15,7 +15,7 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "./firebase";
 import { setPersistence, browserLocalPersistence } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-
+import { increment, writeBatch } from "firebase/firestore";
 
 setPersistence(auth, browserLocalPersistence);
 
@@ -359,26 +359,89 @@ function Posts() {
   };
 
   const deleteComment = async (postId, commentId) => {
-    try {
-      await deleteDoc(doc(db, "posts", postId, "comments", commentId));
-      setCommentsByPost((prev) => ({
-        ...prev,
-        [postId]: prev[postId].filter((c) => c.id !== commentId),
-      }));
-      setConfirmDeleteComment(null);
-    } catch (error) {
-      console.error("Error deleting comment:", error);
+  try {
+    // Φέρνουμε το post για να βρούμε τον author
+    const postRef = doc(db, "posts", postId);
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) {
+      console.log("Post not found");
+      return;
     }
-  };
+    const postData = postSnap.data();
+    const postAuthor = postData.author;
+
+    // Διαγραφή comment
+    const commentRef = doc(db, "posts", postId, "comments", commentId);
+    await deleteDoc(commentRef);
+
+    // Μείωση του commentsReceived στον author του post
+    if (postAuthor) {
+      const userRef = doc(db, "users", postAuthor);
+      await updateDoc(userRef, {
+        commentsReceived: increment(-1),
+      });
+    }
+
+    // Ενημέρωση UI
+    setCommentsByPost((prev) => ({
+      ...prev,
+      [postId]: prev[postId].filter((c) => c.id !== commentId),
+    }));
+    setConfirmDeleteComment(null);
+
+    console.log("Comment deleted and commentsReceived updated");
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+  }
+};
 
   const deletePost = async (postId) => {
-    try {
-      await deleteDoc(doc(db, "posts", postId));
-      setConfirmDelete(null);
-    } catch (err) {
-      console.error("Error deleting post:", err);
+  try {
+    const postRef = doc(db, "posts", postId);
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) {
+      console.log("Post not found");
+      return;
     }
-  };
+
+    const postData = postSnap.data();
+    const postAuthor = postData.author;
+
+    // Φέρε comments του post
+    const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
+    const commentsCount = commentsSnapshot.size;
+
+    // Πόσοι έκαναν like (εκτός του author)
+    const likes = postData.likes || [];
+    const likesCount = likes.filter(userId => userId !== postAuthor).length;
+
+    const userRef = doc(db, "users", postAuthor);
+    const batch = writeBatch(db);
+
+    // Μείωσε commentsReceived και likesReceived στον χρήστη
+    if (commentsCount > 0) {
+      batch.update(userRef, {
+        commentsReceived: increment(-commentsCount),
+      });
+    }
+    if (likesCount > 0) {
+      batch.update(userRef, {
+        likesReceived: increment(-likesCount),
+      });
+    }
+
+    // Διαγραφή post
+    batch.delete(postRef);
+
+    await batch.commit();
+
+    // Κάνε update το UI
+    setConfirmDelete(null);
+    console.log("Post deleted and counters updated successfully");
+  } catch (err) {
+    console.error("Error deleting post:", err);
+  }
+};
 
   const filteredPosts = posts.filter((post) => {
     const text = searchText.toLowerCase();
