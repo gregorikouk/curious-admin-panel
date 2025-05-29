@@ -2,7 +2,7 @@
   "name": "curious-homepage",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://gregorikouk.github.io/home",
+  "homepage": "https://gregorikouk.github.io/curious-admin-panel/home",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
