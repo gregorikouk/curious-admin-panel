@@ -9,6 +9,11 @@ import {
   deleteDoc,
   onSnapshot,
   setDoc,
+  addDoc,
+  serverTimestamp,
+  query,
+  orderBy,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -16,6 +21,7 @@ import { auth } from "./firebase";
 import { setPersistence, browserLocalPersistence } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { increment, writeBatch } from "firebase/firestore";
+import { uploadImageToCloudinary } from "./cloudinary";
 
 setPersistence(auth, browserLocalPersistence);
 
@@ -210,6 +216,12 @@ function AdminPanel({ user, onLogout }) {
         >
           View Categories
         </NavLink>
+        <NavLink
+          to="/admin/events"
+          style={({ isActive }) => linkStyle(isActive)}
+        >
+          Create Event
+        </NavLink>
       </nav>
 
       <Routes>
@@ -217,6 +229,7 @@ function AdminPanel({ user, onLogout }) {
         <Route path="posts" element={<Posts />} />
         <Route path="users" element={<Users />} />
         <Route path="categories" element={<Categories />} />
+        <Route path="events" element={<Events />} />
         <Route path="*" element={<Navigate to="/admin/reports" replace />} />
       </Routes>
     </div>
@@ -932,6 +945,338 @@ function Categories() {
             </li>
           ))}
         </ul>
+      )}
+    </>
+  );
+}
+
+// -- Events tab (Create / List / Edit / Delete) --
+
+function Events() {
+  const emptyForm = {
+    title: "",
+    datetime: "",     // "YYYY-MM-DDTHH:mm" από input type="datetime-local"
+    location: "",
+    info: "",
+    cost: "",         // προαιρετικό
+  };
+
+  const [events, setEvents] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [existingImageUrl, setExistingImageUrl] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  useEffect(() => {
+    const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setEvents(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setImageFile(null);
+    setImagePreview(null);
+    setEditingId(null);
+    setExistingImageUrl(null);
+    setError("");
+  };
+
+  const onFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const startEdit = (ev) => {
+    setEditingId(ev.id);
+    // Μετατρέπω το Timestamp σε string για το input datetime-local
+    let dt = "";
+    if (ev.datetime) {
+      const d = ev.datetime.toDate ? ev.datetime.toDate() : new Date(ev.datetime);
+      // YYYY-MM-DDTHH:mm (local)
+      const pad = (n) => String(n).padStart(2, "0");
+      dt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    setForm({
+      title: ev.title || "",
+      datetime: dt,
+      location: ev.location || "",
+      info: ev.info || "",
+      cost: ev.cost != null ? String(ev.cost) : "",
+    });
+    setImageFile(null);
+    setImagePreview(null);
+    setExistingImageUrl(ev.imageUrl || null);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!form.title.trim() || !form.datetime || !form.location.trim() || !form.info.trim()) {
+      setError("Συμπλήρωσε title, ημ/νία, τοποθεσία και πληροφορίες.");
+      return;
+    }
+    if (!editingId && !imageFile) {
+      setError("Διάλεξε μια εικόνα για το event.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let imageUrl = existingImageUrl;
+      let imagePublicId = null;
+
+      if (imageFile) {
+        const uploaded = await uploadImageToCloudinary(imageFile);
+        imageUrl = uploaded.url;
+        imagePublicId = uploaded.publicId;
+      }
+
+      const payload = {
+        title: form.title.trim(),
+        datetime: Timestamp.fromDate(new Date(form.datetime)),
+        location: form.location.trim(),
+        info: form.info.trim(),
+        cost: form.cost.trim() === "" ? null : Number(form.cost),
+        imageUrl: imageUrl || null,
+      };
+      if (imagePublicId) payload.imagePublicId = imagePublicId;
+
+      if (editingId) {
+        await updateDoc(doc(db, "events", editingId), {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await addDoc(collection(db, "events"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Αποτυχία αποθήκευσης.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteEvent = async (id) => {
+    try {
+      await deleteDoc(doc(db, "events", id));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      console.error("Error deleting event:", err);
+    }
+  };
+
+  const formatDT = (ts) => {
+    if (!ts) return "—";
+    if (ts.toDate) return ts.toDate().toLocaleString();
+    return String(ts);
+  };
+
+  return (
+    <>
+      <h2 style={headerStyle}>{editingId ? "Edit Event" : "Create Event"}</h2>
+
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          backgroundColor: "#fff",
+          color: "#121212",
+          padding: 20,
+          borderRadius: 8,
+          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+          marginBottom: 30,
+        }}
+      >
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Τίτλος *
+        </label>
+        <input
+          style={inputStyle}
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+          placeholder="π.χ. Live μουσική στο magazi"
+          required
+        />
+
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Ημερομηνία & Ώρα *
+        </label>
+        <input
+          style={inputStyle}
+          type="datetime-local"
+          value={form.datetime}
+          onChange={(e) => setForm({ ...form, datetime: e.target.value })}
+          required
+        />
+
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Τοποθεσία *
+        </label>
+        <input
+          style={inputStyle}
+          value={form.location}
+          onChange={(e) => setForm({ ...form, location: e.target.value })}
+          placeholder="π.χ. Ερμού 15, Αθήνα"
+          required
+        />
+
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Πληροφορίες *
+        </label>
+        <textarea
+          style={{ ...inputStyle, minHeight: 100, fontFamily: "inherit" }}
+          value={form.info}
+          onChange={(e) => setForm({ ...form, info: e.target.value })}
+          placeholder="Περιγραφή του event..."
+          required
+        />
+
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Κόστος (προαιρετικό, σε €)
+        </label>
+        <input
+          style={inputStyle}
+          type="number"
+          min="0"
+          step="0.01"
+          value={form.cost}
+          onChange={(e) => setForm({ ...form, cost: e.target.value })}
+          placeholder="άφησέ το κενό αν είναι δωρεάν"
+        />
+
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
+          Εικόνα {editingId ? "(άφησέ το κενό για να κρατήσει την υπάρχουσα)" : "*"}
+        </label>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={onFileChange}
+          style={{ marginBottom: 20 }}
+        />
+
+        {(imagePreview || existingImageUrl) && (
+          <div style={{ marginBottom: 20 }}>
+            <img
+              src={imagePreview || existingImageUrl}
+              alt="preview"
+              style={{
+                maxWidth: 240,
+                maxHeight: 180,
+                borderRadius: 8,
+                border: "1px solid #ddd",
+              }}
+            />
+          </div>
+        )}
+
+        {error && (
+          <p style={{ color: "#bb0000", fontWeight: 700, marginBottom: 10 }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="submit" style={buttonStyle} disabled={saving}>
+            {saving ? "Saving..." : editingId ? "Save Changes" : "Create"}
+          </button>
+          {editingId && (
+            <button
+              type="button"
+              style={buttonDangerStyle}
+              onClick={resetForm}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
+
+      <h2 style={headerStyle}>All Events</h2>
+      {events.length === 0 ? (
+        <p style={{ color: "#888" }}>No events yet</p>
+      ) : (
+        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+          {events.map((ev) => (
+            <li
+              key={ev.id}
+              style={{
+                backgroundColor: "#fff",
+                color: "#121212",
+                padding: 20,
+                marginBottom: 16,
+                borderRadius: 8,
+                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+                display: "flex",
+                gap: 16,
+                alignItems: "flex-start",
+              }}
+            >
+              {ev.imageUrl && (
+                <img
+                  src={ev.imageUrl}
+                  alt={ev.title}
+                  style={{
+                    width: 140,
+                    height: 100,
+                    objectFit: "cover",
+                    borderRadius: 6,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+                  {ev.title}
+                </div>
+                <div><b>Ημ/νία:</b> {formatDT(ev.datetime)}</div>
+                <div><b>Τοποθεσία:</b> {ev.location}</div>
+                <div style={{ margin: "6px 0" }}>{ev.info}</div>
+                <div>
+                  <b>Κόστος:</b>{" "}
+                  {ev.cost == null || ev.cost === "" ? "Δωρεάν" : `${ev.cost} €`}
+                </div>
+                <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                  <button style={buttonStyle} onClick={() => startEdit(ev)}>
+                    Edit
+                  </button>
+                  <button
+                    style={buttonDangerStyle}
+                    onClick={() => setConfirmDeleteId(ev.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Confirm Delete Event"
+          message="Σίγουρα θες να διαγράψεις αυτό το event;"
+          onConfirm={() => deleteEvent(confirmDeleteId)}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
     </>
   );
