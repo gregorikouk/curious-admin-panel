@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   collection,
   doc,
@@ -22,93 +22,45 @@ import { setPersistence, browserLocalPersistence } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { increment, writeBatch } from "firebase/firestore";
 import { uploadImageToCloudinary } from "./cloudinary";
+import "./App.css";
 
 setPersistence(auth, browserLocalPersistence);
 
-const containerStyle = {
-  maxWidth: 900,
-  margin: "40px auto",
-  backgroundColor: "#fff",
-  borderRadius: 8,
-  padding: 24,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-  color: "#000",
-  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const C = {
+  bg: "#0c0c14",
+  sidebar: "#10101a",
+  sidebarBorder: "rgba(255,255,255,0.06)",
+  card: "#1a1a2e",
+  cardBorder: "rgba(255,255,255,0.07)",
+  accent: "#6366f1",
+  accentBg: "rgba(99,102,241,0.15)",
+  danger: "#ef4444",
+  dangerBg: "rgba(239,68,68,0.12)",
+  textPrimary: "#f1f5f9",
+  textSecondary: "#94a3b8",
+  textMuted: "#475569",
+  inputBg: "#13131f",
+  inputBorder: "rgba(255,255,255,0.1)",
 };
 
-const darkBackground = {
-  backgroundColor: "#121212",
-  minHeight: "100vh",
-  color: "#fff",
-  fontWeight: 600,
-  fontSize: 16,
-};
+const SIDEBAR_W = 240;
 
-const headerStyle = {
-  fontWeight: "700",
-  marginBottom: 20,
-  fontSize: 24,
-  borderBottom: "2px solid #eee",
-  paddingBottom: 8,
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  marginBottom: 20,
-  borderRadius: 6,
-  border: "1px solid #ccc",
-  fontSize: 16,
-  fontWeight: 600,
-  outline: "none",
-};
-
-const buttonStyle = {
-  padding: "8px 16px",
-  borderRadius: 6,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 700,
-  fontSize: 16,
-  backgroundColor: "#121212",
-  color: "#fff",
-  transition: "background-color 0.3s ease",
-};
-
-const buttonDangerStyle = {
-  ...buttonStyle,
-  backgroundColor: "#bb0000",
-};
-
-const linkStyle = {
-  color: "#fff",
-  textDecoration: "none",
-  fontWeight: 600,
-  marginRight: 20,
-  fontSize: 18,
-  paddingBottom: 4,
-  borderBottom: "2px solid transparent",
-};
-
-const activeLinkStyle = {
-  ...linkStyle,
-  borderBottom: "2px solid #fff",
-};
-
+// ─── Login ────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      // Έλεγχος admin flag στο users collection
       const userDoc = await getDoc(doc(db, "users", user.uid));
       if (userDoc.exists() && userDoc.data().isAdmin) {
         onLogin({ uid: user.uid, email: user.email, role: "admin" });
@@ -118,142 +70,234 @@ function Login({ onLogin }) {
       }
     } catch {
       setError("Invalid credentials.");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div style={{ ...darkBackground, display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-      <div style={{ backgroundColor: "#fff", padding: 40, borderRadius: 12, width: 350, color: "#121212", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-        <h2 style={{ marginBottom: 20, fontWeight: "700", fontSize: 24, textAlign: "center" }}>Admin Login</h2>
+    <div className="login-bg">
+      <div style={{
+        width: 380,
+        background: "#1a1a2e",
+        border: `1px solid ${C.cardBorder}`,
+        borderRadius: 16,
+        padding: "40px 36px",
+        boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
+      }}>
+        {/* Logo/Icon */}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{
+            width: 52,
+            height: 52,
+            background: C.accentBg,
+            borderRadius: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 24,
+            marginBottom: 16,
+            border: "1px solid rgba(99,102,241,0.3)",
+          }}>
+            ⚡
+          </div>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.textPrimary }}>
+            Admin Console
+          </h2>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: C.textMuted }}>
+            Sign in to your admin account
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit}>
-          <input
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            type="email"
-            required
-            style={inputStyle}
-          />
-          <input
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            type="password"
-            required
-            style={inputStyle}
-          />
-          <button type="submit" style={{ ...buttonStyle, width: "100%" }}>Login</button>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Email
+            </label>
+            <input
+              className="form-input"
+              placeholder="admin@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              type="email"
+              required
+            />
+          </div>
+          <div style={{ marginBottom: 22 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Password
+            </label>
+            <input
+              className="form-input"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              type="password"
+              required
+            />
+          </div>
+          <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
         </form>
-        {error && <p style={{ color: "red", marginTop: 10, fontWeight: 700 }}>{error}</p>}
+
+        {error && (
+          <div style={{
+            marginTop: 16,
+            padding: "10px 14px",
+            background: C.dangerBg,
+            border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 8,
+            color: "#f87171",
+            fontSize: 13,
+            fontWeight: 500,
+          }}>
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function NavLink({ to, children }) {
-  const currentPath = window.location.pathname;
-  const isActive = currentPath === to;
+// ─── Sidebar NavLink ──────────────────────────────────────────────────────────
+function SidebarLink({ to, icon, children }) {
+  const location = useLocation();
+  const isActive = location.pathname === to || location.pathname.startsWith(to + "/");
+
   return (
-    <Link to={to} style={isActive ? activeLinkStyle : linkStyle}>
+    <Link to={to} className={`sidebar-link${isActive ? " active" : ""}`}>
+      <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0 }}>{icon}</span>
       {children}
     </Link>
   );
 }
 
+// ─── Admin Panel Shell ────────────────────────────────────────────────────────
 function AdminPanel({ user, onLogout }) {
-  const linkStyle = (isActive) => ({
-    marginRight: 15,
-    fontWeight: isActive ? "bold" : "normal",
-    borderBottom: isActive ? "2px solid white" : "none",
-    paddingBottom: 4,
-    color: "white",
-    textDecoration: "none",
-  });
-
   return (
-    <div style={{ padding: 20, backgroundColor: "#121212", minHeight: "100vh", color: "white" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1>Admin Console</h1>
-        <button
-          onClick={onLogout}
-          style={{
-            backgroundColor: "#ffffff",
-            border: "none",
-            color: "#121212",
-            fontWeight: "bold",
-            padding: "8px 16px",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
-        >
-          Logout
-        </button>
-      </header>
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: C.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
-      <nav style={{ marginBottom: 20 }}>
-        <NavLink
-          to="/admin/reports"
-          style={({ isActive }) => linkStyle(isActive)}
-          end
-        >
-          View Reports
-        </NavLink>
-        <NavLink
-          to="/admin/posts"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Posts
-        </NavLink>
-        <NavLink
-          to="/admin/users"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Users
-        </NavLink>
-        <NavLink
-          to="/admin/categories"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Categories
-        </NavLink>
-        <NavLink
-          to="/admin/events"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          Create Event
-        </NavLink>
-      </nav>
+      {/* Sidebar */}
+      <aside style={{
+        width: SIDEBAR_W,
+        minHeight: "100vh",
+        backgroundColor: C.sidebar,
+        borderRight: `1px solid ${C.sidebarBorder}`,
+        display: "flex",
+        flexDirection: "column",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        bottom: 0,
+        zIndex: 100,
+      }}>
+        {/* Brand */}
+        <div style={{ padding: "20px 16px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 34,
+              height: 34,
+              background: C.accentBg,
+              borderRadius: 9,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              border: "1px solid rgba(99,102,241,0.3)",
+            }}>
+              ⚡
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary, lineHeight: 1.2 }}>Admin</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>Console</div>
+            </div>
+          </div>
+        </div>
 
-      <Routes>
-        <Route path="reports" element={<Reports />} />
-        <Route path="posts" element={<Posts />} />
-        <Route path="users" element={<Users />} />
-        <Route path="categories" element={<Categories />} />
-        <Route path="events" element={<Events />} />
-        <Route path="*" element={<Navigate to="/admin/reports" replace />} />
-      </Routes>
+        <div className="divider" style={{ margin: "4px 16px 12px" }} />
+
+        {/* Nav */}
+        <nav style={{ padding: "0 8px", flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <SidebarLink to="/admin/reports" icon="🚩">Reports</SidebarLink>
+          <SidebarLink to="/admin/posts" icon="📝">Posts</SidebarLink>
+          <SidebarLink to="/admin/users" icon="👥">Users</SidebarLink>
+          <SidebarLink to="/admin/categories" icon="🏷️">Categories</SidebarLink>
+          <SidebarLink to="/admin/events" icon="📅">Events</SidebarLink>
+        </nav>
+
+        {/* Footer - user info + logout */}
+        <div style={{ padding: "12px 8px 16px", borderTop: `1px solid ${C.sidebarBorder}` }}>
+          <div style={{ padding: "8px 14px", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 2 }}>Signed in as</div>
+            <div style={{ fontSize: 12, color: C.textSecondary, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.email}
+            </div>
+          </div>
+          <button className="logout-btn" onClick={onLogout}>
+            <span>↩</span>
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main style={{ marginLeft: SIDEBAR_W, flex: 1, padding: "32px", minHeight: "100vh", color: C.textPrimary }}>
+        <Routes>
+          <Route path="reports" element={<Reports />} />
+          <Route path="posts" element={<Posts />} />
+          <Route path="users" element={<Users />} />
+          <Route path="categories" element={<Categories />} />
+          <Route path="events" element={<Events />} />
+          <Route path="*" element={<Navigate to="/admin/reports" replace />} />
+        </Routes>
+      </main>
     </div>
   );
 }
-// -- Reports tab with same styling approach --
 
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+function ConfirmModal({ title, message, onConfirm, onCancel }) {
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+    }}>
+      <div style={{
+        background: "#1e1e32",
+        border: `1px solid ${C.cardBorder}`,
+        borderRadius: 14,
+        padding: "28px 28px 24px",
+        width: 360,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+      }}>
+        <div style={{ fontSize: 20, marginBottom: 12 }}>🗑️</div>
+        <h3 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, color: C.textPrimary }}>{title}</h3>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: C.textSecondary, lineHeight: 1.5 }}>{message}</p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger-solid" onClick={onConfirm}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
 function Reports() {
   const [reports, setReports] = useState([]);
-  const [posts, setPosts] = useState([]);
 
   useEffect(() => {
     const unsubReports = onSnapshot(collection(db, "reports"), snapshot => {
       setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
-    const unsubPosts = onSnapshot(collection(db, "posts"), snapshot => {
-      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => {
-      unsubReports();
-      unsubPosts();
-    };
+    return () => unsubReports();
   }, []);
 
   const acceptReport = async (reportId, postId) => {
@@ -272,48 +316,47 @@ function Reports() {
 
   return (
     <>
-      <h2 style={headerStyle}>Reports</h2>
+      <PageHeader icon="🚩" title="Reports" count={reports.length} />
+
       {reports.length === 0 ? (
-        <p style={{ color: "#888" }}>No reports</p>
+        <EmptyState icon="✅" text="No pending reports — all clear!" />
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+        <div>
           {reports.map(r => (
-            <li
-              key={r.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-              }}
-            >
-              <b>Post ID:</b> {r.postId} <br />
-              <b>Post Text:</b> {r.postText || "N/A"} <br />
-              <b>Author Email:</b> {r.authorEmail || "N/A"} <br />
-              <b>Reporter Email:</b> {r.reporterEmail || "N/A"} <br />
-              <b>Timestamp:</b> {r.timestamp ? r.timestamp.toDate().toLocaleString() : "N/A"} <br />
-              <b>Reason:</b> {r.reason || "No reason"} <br />
-              <button onClick={() => acceptReport(r.id, r.postId)} style={{ ...buttonDangerStyle, marginRight: 10 }}>
-                Accept & Delete Post
-              </button>
-              <button onClick={() => ignoreReport(r.id)} style={buttonStyle}>
-                Ignore
-              </button>
-            </li>
+            <div key={r.id} className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10, fontFamily: "monospace" }}>
+                    ID: {r.postId}
+                  </div>
+                  <InfoRow label="Post" value={r.postText || "N/A"} />
+                  <InfoRow label="Author" value={r.authorEmail || "N/A"} />
+                  <InfoRow label="Reporter" value={r.reporterEmail || "N/A"} />
+                  <InfoRow label="Reason" value={r.reason || "No reason provided"} />
+                  <InfoRow label="Date" value={r.timestamp ? r.timestamp.toDate().toLocaleString() : "N/A"} />
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button className="btn btn-danger" onClick={() => acceptReport(r.id, r.postId)}>
+                    Delete Post
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => ignoreReport(r.id)}>
+                    Ignore
+                  </button>
+                </div>
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </>
   );
 }
 
-// -- Posts tab --
+// ─── Posts ────────────────────────────────────────────────────────────────────
 function Posts() {
   const [posts, setPosts] = useState([]);
-  const [confirmDelete, setConfirmDelete] = useState(null); // Για posts
-  const [confirmDeleteComment, setConfirmDeleteComment] = useState(null); // Για σχόλια
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDeleteComment, setConfirmDeleteComment] = useState(null);
   const [usernames, setUsernames] = useState({});
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentsByPost, setCommentsByPost] = useState({});
@@ -323,20 +366,14 @@ function Posts() {
     const unsubPosts = onSnapshot(collection(db, "posts"), (snapshot) => {
       const newPosts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPosts(newPosts);
-
-      const authorIds = newPosts.map((p) => p.author);
-      const uniqueAuthorIds = [...new Set(authorIds)];
+      const uniqueAuthorIds = [...new Set(newPosts.map((p) => p.author))];
       uniqueAuthorIds.forEach(async (authorId) => {
         if (!usernames[authorId]) {
           const userDoc = await getDoc(doc(db, "users", authorId));
-          if (userDoc.exists()) {
-            setUsernames((prev) => ({
-              ...prev,
-              [authorId]: userDoc.data().name || "Unknown",
-            }));
-          } else {
-            setUsernames((prev) => ({ ...prev, [authorId]: "Unknown" }));
-          }
+          setUsernames((prev) => ({
+            ...prev,
+            [authorId]: userDoc.exists() ? userDoc.data().name || "Unknown" : "Unknown",
+          }));
         }
       });
     });
@@ -345,121 +382,70 @@ function Posts() {
 
   const toggleExpandPost = async (postId) => {
     setExpandedPosts((prev) => ({ ...prev, [postId]: !prev[postId] }));
-
-    if (!expandedPosts[postId]) {
-      if (!commentsByPost[postId]) {
-        const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
-        const comments = commentsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-        const commentAuthorIds = comments.map((c) => c.author);
-        const uniqueCommentAuthorIds = [...new Set(commentAuthorIds)];
-        for (const authorId of uniqueCommentAuthorIds) {
-          if (!usernames[authorId]) {
-            const userDoc = await getDoc(doc(db, "users", authorId));
-            if (userDoc.exists()) {
-              setUsernames((prev) => ({
-                ...prev,
-                [authorId]: userDoc.data().name || "Unknown",
-              }));
-            } else {
-              setUsernames((prev) => ({ ...prev, [authorId]: "Unknown" }));
-            }
-          }
+    if (!expandedPosts[postId] && !commentsByPost[postId]) {
+      const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
+      const comments = commentsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const uniqueCommentAuthorIds = [...new Set(comments.map((c) => c.author))];
+      for (const authorId of uniqueCommentAuthorIds) {
+        if (!usernames[authorId]) {
+          const userDoc = await getDoc(doc(db, "users", authorId));
+          setUsernames((prev) => ({
+            ...prev,
+            [authorId]: userDoc.exists() ? userDoc.data().name || "Unknown" : "Unknown",
+          }));
         }
-        setCommentsByPost((prev) => ({ ...prev, [postId]: comments }));
       }
+      setCommentsByPost((prev) => ({ ...prev, [postId]: comments }));
     }
   };
 
   const deleteComment = async (postId, commentId) => {
-  try {
-    // Φέρνουμε το post για να βρούμε τον author
-    const postRef = doc(db, "posts", postId);
-    const postSnap = await getDoc(postRef);
-    if (!postSnap.exists()) {
-      console.log("Post not found");
-      return;
+    try {
+      const postRef = doc(db, "posts", postId);
+      const postSnap = await getDoc(postRef);
+      if (!postSnap.exists()) return;
+      const postAuthor = postSnap.data().author;
+      await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+      if (postAuthor) {
+        await updateDoc(doc(db, "users", postAuthor), { commentsReceived: increment(-1) });
+      }
+      setCommentsByPost((prev) => ({
+        ...prev,
+        [postId]: prev[postId].filter((c) => c.id !== commentId),
+      }));
+      setConfirmDeleteComment(null);
+    } catch (error) {
+      console.error("Error deleting comment:", error);
     }
-    const postData = postSnap.data();
-    const postAuthor = postData.author;
-
-    // Διαγραφή comment
-    const commentRef = doc(db, "posts", postId, "comments", commentId);
-    await deleteDoc(commentRef);
-
-    // Μείωση του commentsReceived στον author του post
-    if (postAuthor) {
-      const userRef = doc(db, "users", postAuthor);
-      await updateDoc(userRef, {
-        commentsReceived: increment(-1),
-      });
-    }
-
-    // Ενημέρωση UI
-    setCommentsByPost((prev) => ({
-      ...prev,
-      [postId]: prev[postId].filter((c) => c.id !== commentId),
-    }));
-    setConfirmDeleteComment(null);
-
-    console.log("Comment deleted and commentsReceived updated");
-  } catch (error) {
-    console.error("Error deleting comment:", error);
-  }
-};
+  };
 
   const deletePost = async (postId) => {
-  try {
-    const postRef = doc(db, "posts", postId);
-    const postSnap = await getDoc(postRef);
-    if (!postSnap.exists()) {
-      console.log("Post not found");
-      return;
+    try {
+      const postRef = doc(db, "posts", postId);
+      const postSnap = await getDoc(postRef);
+      if (!postSnap.exists()) return;
+      const postData = postSnap.data();
+      const postAuthor = postData.author;
+      const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
+      const commentsCount = commentsSnapshot.size;
+      const likes = postData.likes || [];
+      const likesCount = likes.filter(userId => userId !== postAuthor).length;
+      const userRef = doc(db, "users", postAuthor);
+      const batch = writeBatch(db);
+      if (commentsCount > 0) batch.update(userRef, { commentsReceived: increment(-commentsCount) });
+      if (likesCount > 0) batch.update(userRef, { likesReceived: increment(-likesCount) });
+      batch.delete(postRef);
+      await batch.commit();
+      setConfirmDelete(null);
+    } catch (err) {
+      console.error("Error deleting post:", err);
     }
-
-    const postData = postSnap.data();
-    const postAuthor = postData.author;
-
-    // Φέρε comments του post
-    const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
-    const commentsCount = commentsSnapshot.size;
-
-    // Πόσοι έκαναν like (εκτός του author)
-    const likes = postData.likes || [];
-    const likesCount = likes.filter(userId => userId !== postAuthor).length;
-
-    const userRef = doc(db, "users", postAuthor);
-    const batch = writeBatch(db);
-
-    // Μείωσε commentsReceived και likesReceived στον χρήστη
-    if (commentsCount > 0) {
-      batch.update(userRef, {
-        commentsReceived: increment(-commentsCount),
-      });
-    }
-    if (likesCount > 0) {
-      batch.update(userRef, {
-        likesReceived: increment(-likesCount),
-      });
-    }
-
-    // Διαγραφή post
-    batch.delete(postRef);
-
-    await batch.commit();
-
-    // Κάνε update το UI
-    setConfirmDelete(null);
-    console.log("Post deleted and counters updated successfully");
-  } catch (err) {
-    console.error("Error deleting post:", err);
-  }
-};
+  };
 
   const filteredPosts = posts.filter((post) => {
     const text = searchText.toLowerCase();
     const authorName = usernames[post.author]?.toLowerCase() || "";
-    return post.text.toLowerCase().includes(text) || authorName.includes(text);
+    return post.text?.toLowerCase().includes(text) || authorName.includes(text);
   });
 
   const formatTimestamp = (timestamp) => {
@@ -469,129 +455,122 @@ function Posts() {
     return String(timestamp);
   };
 
-  const buttonStyle = {
-    padding: "6px 12px",
-    borderRadius: 4,
-    border: "none",
-    cursor: "pointer",
-  };
-
-  const buttonDangerStyle = {
-    ...buttonStyle,
-    backgroundColor: "#d33",
-    color: "white",
-  };
-
   return (
     <>
-      <h2 style={{ color: "#121212" }}>Posts</h2>
-      <input
-        type="text"
-        placeholder="Search by post text or author..."
-        value={searchText}
-        onChange={(e) => setSearchText(e.target.value)}
-        style={{
-          marginBottom: 15,
-          width: "100%",
-          padding: 8,
-          borderRadius: 6,
-          border: "1px solid #ccc",
-          fontSize: 16,
-        }}
-      />
+      <PageHeader icon="📝" title="Posts" count={posts.length} />
+
+      {/* Search */}
+      <div style={{ position: "relative", marginBottom: 20 }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 14 }}>
+          🔍
+        </span>
+        <input
+          className="search-input"
+          placeholder="Search posts or authors…"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </div>
+
       {filteredPosts.length === 0 ? (
-        <p style={{ color: "#888" }}>No posts found</p>
+        <EmptyState icon="📭" text="No posts found" />
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+        <div>
           {filteredPosts.map((p) => (
-            <li
-              key={p.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-              }}
-            >
-              <b>{usernames[p.author] || "Unknown"}</b>: {p.text}
-              <br />
-              <small style={{ color: "#555" }}>{formatTimestamp(p.timestamp)}</small>
-              <br />
-              <button
-                style={{ ...buttonDangerStyle, marginRight: 10 }}
-                onClick={() => setConfirmDelete(p.id)}
-              >
-                Delete Post
-              </button>
-              <button
-                onClick={() => toggleExpandPost(p.id)}
-                style={{ ...buttonStyle }}
-              >
-                {expandedPosts[p.id] ? "Hide Comments" : "Show Comments"}
-              </button>
+            <div key={p.id} className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <div style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: C.accentBg,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#a5b4fc",
+                      border: "1px solid rgba(99,102,241,0.25)",
+                      flexShrink: 0,
+                    }}>
+                      {(usernames[p.author] || "?")[0]?.toUpperCase()}
+                    </div>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>
+                      {usernames[p.author] || "Unknown"}
+                    </span>
+                    <span style={{ fontSize: 12, color: C.textMuted }}>
+                      {formatTimestamp(p.timestamp)}
+                    </span>
+                  </div>
+                  <p style={{ margin: "0 0 12px", fontSize: 14, color: C.textSecondary, lineHeight: 1.6 }}>
+                    {p.text}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(p.id)}>
+                  Delete Post
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandPost(p.id)}>
+                  {expandedPosts[p.id] ? "▲ Hide Comments" : "▼ Show Comments"}
+                </button>
+              </div>
 
               {expandedPosts[p.id] && (
-                <ul style={{ marginTop: 10, paddingLeft: 20 }}>
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.cardBorder}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+                    Comments ({(commentsByPost[p.id] || []).length})
+                  </div>
                   {commentsByPost[p.id] && commentsByPost[p.id].length > 0 ? (
                     commentsByPost[p.id].map((c) => (
-                      <li
-                        key={c.id}
-                        style={{
-                          marginBottom: 6,
-                          backgroundColor: "#f9f9f9",
-                          padding: 8,
-                          borderRadius: 6,
-                          color: "#121212",
-                        }}
-                      >
-                        <b>{usernames[c.author] || "Unknown"}</b>: {c.text}
-                        <br />
-                        <small style={{ color: "#555" }}>{formatTimestamp(c.timestamp)}</small>
-                        <button
-                          style={{
-                            ...buttonDangerStyle,
-                            marginLeft: 10,
-                            padding: "4px 10px",
-                            fontSize: 12,
-                          }}
-                          onClick={() =>
-                            setConfirmDeleteComment({ postId: p.id, commentId: c.id })
-                          }
-                        >
-                          Delete Comment
-                        </button>
-                      </li>
+                      <div key={c.id} className="comment-item">
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontWeight: 600, fontSize: 13, color: "#a5b4fc" }}>
+                              {usernames[c.author] || "Unknown"}
+                            </span>
+                            <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>
+                              {formatTimestamp(c.timestamp)}
+                            </span>
+                            <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSecondary }}>
+                              {c.text}
+                            </p>
+                          </div>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => setConfirmDeleteComment({ postId: p.id, commentId: c.id })}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                     ))
                   ) : (
-                    <li style={{ fontStyle: "italic", color: "#666" }}>No comments</li>
+                    <p style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>No comments</p>
                   )}
-                </ul>
+                </div>
               )}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
-      {/* Confirm διαγραφή post */}
       {confirmDelete && (
         <ConfirmModal
-          title="Confirm Delete Post"
-          message="Are you sure you want to delete this post?"
+          title="Delete Post"
+          message="This will permanently delete the post and update user stats. This cannot be undone."
           onConfirm={() => deletePost(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
         />
       )}
-
-      {/* Confirm διαγραφή comment */}
       {confirmDeleteComment && (
         <ConfirmModal
-          title="Confirm Delete Comment"
-          message="Are you sure you want to delete this comment?"
-          onConfirm={() =>
-            deleteComment(confirmDeleteComment.postId, confirmDeleteComment.commentId)
-          }
+          title="Delete Comment"
+          message="Are you sure you want to permanently delete this comment?"
+          onConfirm={() => deleteComment(confirmDeleteComment.postId, confirmDeleteComment.commentId)}
           onCancel={() => setConfirmDeleteComment(null)}
         />
       )}
@@ -599,56 +578,12 @@ function Posts() {
   );
 }
 
-function ConfirmModal({ title, message, onConfirm, onCancel }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0, left: 0, width: "100vw", height: "100vh",
-        backgroundColor: "rgba(0,0,0,0.5)",
-        display: "flex", justifyContent: "center", alignItems: "center",
-        zIndex: 9999,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: "#222",
-          padding: 20,
-          borderRadius: 8,
-          width: 320,
-          textAlign: "center",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.7)",
-          color: "#eee"
-        }}
-      >
-        <h3>{title}</h3>
-        <p>{message}</p>
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "space-around" }}>
-          <button
-            onClick={onConfirm}
-            style={{ padding: "8px 16px", backgroundColor: "#d33", color: "white", border: "none", borderRadius: 4 }}
-          >
-            Yes, Delete
-          </button>
-          <button
-            onClick={onCancel}
-            style={{ padding: "8px 16px", borderRadius: 4 }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -- Users tab --
-
+// ─── Users ────────────────────────────────────────────────────────────────────
 function Users() {
   const [users, setUsers] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
-  const [newUsername, setNewUsername] = useState('');
-  const [searchText, setSearchText] = useState('');
+  const [newUsername, setNewUsername] = useState("");
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), snapshot => {
@@ -685,147 +620,103 @@ function Users() {
   });
 
   return (
-    <div style={{ color: "white", backgroundColor: "#121212", minHeight: "100vh", padding: 20 }}>
-      <h2 style={{ fontWeight: "bold", marginBottom: 15 }}>Users</h2>
-      <input
-        type="text"
-        placeholder="Search by name or email..."
-        value={searchText}
-        onChange={e => setSearchText(e.target.value)}
-        style={{
-          marginBottom: 15,
-          width: "100%",
-          padding: "10px",
-          borderRadius: 6,
-          border: "1px solid #444",
-          backgroundColor: "#1E1E1E",
-          color: "white",
-          fontWeight: "bold"
-        }}
-      />
-      {filteredUsers.length === 0 ? <p>No users found</p> : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+    <>
+      <PageHeader icon="👥" title="Users" count={users.length} />
+
+      <div style={{ position: "relative", marginBottom: 20 }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 14 }}>
+          🔍
+        </span>
+        <input
+          className="search-input"
+          placeholder="Search by name or email…"
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+        />
+      </div>
+
+      {filteredUsers.length === 0 ? (
+        <EmptyState icon="👤" text="No users found" />
+      ) : (
+        <div>
           {filteredUsers.map(u => (
-            <li key={u.id} style={{ marginBottom: 20, borderBottom: "1px solid #333", paddingBottom: 12 }}>
+            <div key={u.id} className="card">
               {editingUser?.id === u.id ? (
-                <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <input
+                    className="form-input"
                     value={newUsername}
                     onChange={e => setNewUsername(e.target.value)}
-                    style={{
-                      padding: "8px",
-                      borderRadius: 5,
-                      border: "1px solid #444",
-                      backgroundColor: "#1E1E1E",
-                      color: "white",
-                      fontWeight: "bold",
-                      marginRight: 10,
-                      width: "200px"
-                    }}
+                    style={{ flex: "1 1 180px", maxWidth: 220 }}
+                    autoFocus
                   />
-                  <button
-                    onClick={saveUsername}
-                    style={{
-                      padding: "8px 12px",
-                      backgroundColor: "#bb86fc",
-                      border: "none",
-                      color: "#121212",
-                      fontWeight: "bold",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      marginRight: 10,
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingUser(null)}
-                    style={{
-                      padding: "8px 12px",
-                      backgroundColor: "#333",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer"
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <label style={{ marginLeft: 20, userSelect: "none" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.textSecondary, cursor: "pointer" }}>
                     <input
                       type="checkbox"
                       checked={u.isAdmin || false}
                       onChange={async e => {
                         await updateDoc(doc(db, "users", u.id), { isAdmin: e.target.checked });
                       }}
-                      style={{ marginRight: 6 }}
                     />
                     Admin
                   </label>
-                </>
+                  <button className="btn btn-primary btn-sm" onClick={saveUsername}>Save</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingUser(null)}>Cancel</button>
+                </div>
               ) : (
-                <>
-                  <b>{u.name}</b> ({u.email}) {u.isAdmin && <span style={{ color: '#bb86fc' }}>[Admin]</span>}
-                  <button
-                    onClick={() => startEdit(u)}
-                    style={{
-                      marginLeft: 15,
-                      padding: "6px 10px",
-                      backgroundColor: "#444",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteUser(u.id)}
-                    style={{
-                      marginLeft: 10,
-                      padding: "6px 10px",
-                      backgroundColor: "#b00020",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                  >
-                    Delete
-                  </button>
-
-                  {/* Toggle Perm Ban */}
-                  <button
-                    onClick={() => togglePermBan(u.id, u.banStatus)}
-                    style={{
-                      marginLeft: 10,
-                      padding: "6px 10px",
-                      backgroundColor: u.banStatus === "perm" ? "#b00020" : "#444",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                    title="Toggle Permanent Ban"
-                  >
-                    {u.banStatus === "perm" ? "Unban" : "Perm Ban"}
-                  </button>
-                </>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                    {/* Avatar */}
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      background: u.banStatus === "perm" ? "rgba(239,68,68,0.15)" : C.accentBg,
+                      border: `1px solid ${u.banStatus === "perm" ? "rgba(239,68,68,0.3)" : "rgba(99,102,241,0.3)"}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      color: u.banStatus === "perm" ? "#f87171" : "#a5b4fc",
+                      flexShrink: 0,
+                    }}>
+                      {(u.name || "?")[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{u.name || "Unnamed"}</span>
+                        {u.isAdmin && <span className="badge badge-admin">Admin</span>}
+                        {u.banStatus === "perm" && <span className="badge badge-banned">Banned</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{u.email}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>Edit</button>
+                    <button
+                      className="btn btn-sm"
+                      style={u.banStatus === "perm"
+                        ? { background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }
+                        : { background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }
+                      }
+                      onClick={() => togglePermBan(u.id, u.banStatus)}
+                    >
+                      {u.banStatus === "perm" ? "Unban" : "Perm Ban"}
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.id)}>Delete</button>
+                  </div>
+                </div>
               )}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
-// -- Categories tab --
-
+// ─── Categories ───────────────────────────────────────────────────────────────
 function Categories() {
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -866,100 +757,68 @@ function Categories() {
 
   return (
     <>
-      <h2 style={headerStyle}>Categories</h2>
-      <div style={{ marginBottom: 20, display: "flex", gap: 12, alignItems: "center" }}>
+      <PageHeader icon="🏷️" title="Categories" count={categories.length} />
+
+      {/* Add new */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
         <input
-          placeholder="New category name"
-          value={newCategoryName}
+          className="form-input"
+          placeholder="New category name…"
+          value={editingCategory ? newCategoryName : newCategoryName}
           onChange={(e) => setNewCategoryName(e.target.value)}
-          style={{ ...inputStyle, marginBottom: 0, flex: "1 1 auto" }}
+          onKeyDown={(e) => e.key === "Enter" && !editingCategory && addCategory()}
+          style={{ flex: 1 }}
         />
-        <button style={buttonStyle} onClick={addCategory}>
-          Add
+        <button
+          className="btn btn-primary"
+          onClick={editingCategory ? saveCategory : addCategory}
+        >
+          {editingCategory ? "Save" : "+ Add"}
         </button>
+        {editingCategory && (
+          <button className="btn btn-ghost" onClick={() => { setEditingCategory(null); setNewCategoryName(""); }}>
+            Cancel
+          </button>
+        )}
       </div>
+
       {categories.length === 0 ? (
-        <p style={{ color: "#888" }}>No categories</p>
+        <EmptyState icon="🏷️" text="No categories yet — add one above" />
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+        <div>
           {categories.map((c) => (
-            <li
-              key={c.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-              }}
-            >
-              {editingCategory?.id === c.id ? (
-                <>
-                  <input
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    style={{ ...inputStyle, marginBottom: 8, flex: "1 1 auto", minWidth: 150 }}
-                  />
-                  <button style={buttonStyle} onClick={saveCategory}>
-                    Save
-                  </button>
-                  <button
-                    style={{ ...buttonDangerStyle, marginLeft: 10 }}
-                    onClick={() => setEditingCategory(null)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div style={{ flex: "1 1 300px" }}>
-                    <b>{c.name}</b> {c.pinned && <span style={{ color: "#bb86fc" }}>(Pinned)</span>}
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => startEdit(c)}
-                      style={{ ...buttonStyle, marginRight: 10 }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteCategory(c.id)}
-                      style={buttonDangerStyle}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => togglePinned(c.id, c.pinned)}
-                      style={buttonStyle}
-                    >
-                      {c.pinned ? "Unpin" : "Pin"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </li>
+            <div key={c.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 16 }}>🏷️</span>
+                <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{c.name}</span>
+                {c.pinned && <span className="badge badge-pinned">Pinned</span>}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => togglePinned(c.id, c.pinned)}
+                  title={c.pinned ? "Unpin" : "Pin to top"}
+                >
+                  {c.pinned ? "📌 Unpin" : "📌 Pin"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { startEdit(c); setNewCategoryName(c.name); }}>
+                  Edit
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={() => deleteCategory(c.id)}>
+                  Delete
+                </button>
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </>
   );
 }
 
-// -- Events tab (Create / List / Edit / Delete) --
-
+// ─── Events ───────────────────────────────────────────────────────────────────
 function Events() {
-  const emptyForm = {
-    title: "",
-    datetime: "",     // "YYYY-MM-DDTHH:mm" από input type="datetime-local"
-    location: "",
-    info: "",
-    cost: "",         // προαιρετικό
-  };
+  const emptyForm = { title: "", datetime: "", location: "", info: "", cost: "" };
 
   const [events, setEvents] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -997,11 +856,9 @@ function Events() {
 
   const startEdit = (ev) => {
     setEditingId(ev.id);
-    // Μετατρέπω το Timestamp σε string για το input datetime-local
     let dt = "";
     if (ev.datetime) {
       const d = ev.datetime.toDate ? ev.datetime.toDate() : new Date(ev.datetime);
-      // YYYY-MM-DDTHH:mm (local)
       const pad = (n) => String(n).padStart(2, "0");
       dt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
@@ -1022,27 +879,23 @@ function Events() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-
     if (!form.title.trim() || !form.datetime || !form.location.trim() || !form.info.trim()) {
-      setError("Συμπλήρωσε title, ημ/νία, τοποθεσία και πληροφορίες.");
+      setError("Please fill in title, date/time, location, and description.");
       return;
     }
     if (!editingId && !imageFile) {
-      setError("Διάλεξε μια εικόνα για το event.");
+      setError("Please select an image for the event.");
       return;
     }
-
     setSaving(true);
     try {
       let imageUrl = existingImageUrl;
       let imagePublicId = null;
-
       if (imageFile) {
         const uploaded = await uploadImageToCloudinary(imageFile);
         imageUrl = uploaded.url;
         imagePublicId = uploaded.publicId;
       }
-
       const payload = {
         title: form.title.trim(),
         datetime: Timestamp.fromDate(new Date(form.datetime)),
@@ -1052,23 +905,15 @@ function Events() {
         imageUrl: imageUrl || null,
       };
       if (imagePublicId) payload.imagePublicId = imagePublicId;
-
       if (editingId) {
-        await updateDoc(doc(db, "events", editingId), {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "events", editingId), { ...payload, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, "events"), {
-          ...payload,
-          createdAt: serverTimestamp(),
-        });
+        await addDoc(collection(db, "events"), { ...payload, createdAt: serverTimestamp() });
       }
-
       resetForm();
     } catch (err) {
       console.error(err);
-      setError(err.message || "Αποτυχία αποθήκευσης.");
+      setError(err.message || "Failed to save event.");
     } finally {
       setSaving(false);
     }
@@ -1091,189 +936,177 @@ function Events() {
 
   return (
     <>
-      <h2 style={headerStyle}>{editingId ? "Edit Event" : "Create Event"}</h2>
+      <PageHeader icon="📅" title="Events" count={events.length} />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          backgroundColor: "#fff",
-          color: "#121212",
-          padding: 20,
-          borderRadius: 8,
-          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-          marginBottom: 30,
-        }}
-      >
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Τίτλος *
-        </label>
-        <input
-          style={inputStyle}
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="π.χ. Live μουσική στο magazi"
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Ημερομηνία & Ώρα *
-        </label>
-        <input
-          style={inputStyle}
-          type="datetime-local"
-          value={form.datetime}
-          onChange={(e) => setForm({ ...form, datetime: e.target.value })}
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Τοποθεσία *
-        </label>
-        <input
-          style={inputStyle}
-          value={form.location}
-          onChange={(e) => setForm({ ...form, location: e.target.value })}
-          placeholder="π.χ. Ερμού 15, Αθήνα"
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Πληροφορίες *
-        </label>
-        <textarea
-          style={{ ...inputStyle, minHeight: 100, fontFamily: "inherit" }}
-          value={form.info}
-          onChange={(e) => setForm({ ...form, info: e.target.value })}
-          placeholder="Περιγραφή του event..."
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Κόστος (προαιρετικό, σε €)
-        </label>
-        <input
-          style={inputStyle}
-          type="number"
-          min="0"
-          step="0.01"
-          value={form.cost}
-          onChange={(e) => setForm({ ...form, cost: e.target.value })}
-          placeholder="άφησέ το κενό αν είναι δωρεάν"
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Εικόνα {editingId ? "(άφησέ το κενό για να κρατήσει την υπάρχουσα)" : "*"}
-        </label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          style={{ marginBottom: 20 }}
-        />
-
-        {(imagePreview || existingImageUrl) && (
-          <div style={{ marginBottom: 20 }}>
-            <img
-              src={imagePreview || existingImageUrl}
-              alt="preview"
-              style={{
-                maxWidth: 240,
-                maxHeight: 180,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-              }}
+      {/* Form */}
+      <div style={{
+        background: C.card,
+        border: `1px solid ${C.cardBorder}`,
+        borderRadius: 12,
+        padding: 24,
+        marginBottom: 32,
+      }}>
+        <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 700, color: C.textPrimary }}>
+          {editingId ? "✏️ Edit Event" : "➕ New Event"}
+        </h3>
+        <form onSubmit={handleSubmit}>
+          <FormField label="Title *">
+            <input
+              className="form-input"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="e.g. Live Music Night"
+              required
             />
+          </FormField>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <FormField label="Date & Time *">
+              <input
+                className="form-input"
+                type="datetime-local"
+                value={form.datetime}
+                onChange={(e) => setForm({ ...form, datetime: e.target.value })}
+                required
+              />
+            </FormField>
+            <FormField label="Cost (€) — leave blank for free">
+              <input
+                className="form-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                placeholder="Free if empty"
+              />
+            </FormField>
           </div>
-        )}
 
-        {error && (
-          <p style={{ color: "#bb0000", fontWeight: 700, marginBottom: 10 }}>
-            {error}
-          </p>
-        )}
+          <FormField label="Location *">
+            <input
+              className="form-input"
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+              placeholder="e.g. 15 Ermou St, Athens"
+              required
+            />
+          </FormField>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button type="submit" style={buttonStyle} disabled={saving}>
-            {saving ? "Saving..." : editingId ? "Save Changes" : "Create"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              style={buttonDangerStyle}
-              onClick={resetForm}
-              disabled={saving}
-            >
-              Cancel
-            </button>
+          <FormField label="Description *">
+            <textarea
+              className="form-input"
+              value={form.info}
+              onChange={(e) => setForm({ ...form, info: e.target.value })}
+              placeholder="Event description…"
+              required
+              style={{ minHeight: 100, resize: "vertical" }}
+            />
+          </FormField>
+
+          <FormField label={editingId ? "Image (leave blank to keep existing)" : "Image *"}>
+            <div style={{
+              border: `2px dashed ${C.inputBorder}`,
+              borderRadius: 8,
+              padding: "20px",
+              textAlign: "center",
+              cursor: "pointer",
+              transition: "border-color 0.15s",
+            }}>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onFileChange}
+                style={{ display: "none" }}
+                id="event-image-upload"
+              />
+              <label htmlFor="event-image-upload" style={{ cursor: "pointer" }}>
+                {(imagePreview || existingImageUrl) ? (
+                  <img
+                    src={imagePreview || existingImageUrl}
+                    alt="preview"
+                    style={{ maxWidth: 200, maxHeight: 140, borderRadius: 8, objectFit: "cover" }}
+                  />
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>🖼️</div>
+                    <div style={{ fontSize: 13, color: C.textMuted }}>Click to upload an image</div>
+                  </div>
+                )}
+              </label>
+            </div>
+          </FormField>
+
+          {error && (
+            <div style={{
+              padding: "10px 14px",
+              background: C.dangerBg,
+              border: "1px solid rgba(239,68,68,0.25)",
+              borderRadius: 8,
+              color: "#f87171",
+              fontSize: 13,
+              marginBottom: 16,
+            }}>
+              {error}
+            </div>
           )}
-        </div>
-      </form>
 
-      <h2 style={headerStyle}>All Events</h2>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Saving…" : editingId ? "Save Changes" : "Create Event"}
+            </button>
+            {editingId && (
+              <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={saving}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Events list */}
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: C.textPrimary, margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+        All Events
+        <span style={{ background: C.accentBg, color: "#a5b4fc", padding: "2px 8px", borderRadius: 99, fontSize: 12 }}>
+          {events.length}
+        </span>
+      </h3>
+
       {events.length === 0 ? (
-        <p style={{ color: "#888" }}>No events yet</p>
+        <EmptyState icon="📅" text="No events yet — create one above" />
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+        <div>
           {events.map((ev) => (
-            <li
-              key={ev.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                display: "flex",
-                gap: 16,
-                alignItems: "flex-start",
-              }}
-            >
+            <div key={ev.id} className="card" style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
               {ev.imageUrl && (
-                <img
-                  src={ev.imageUrl}
-                  alt={ev.title}
-                  style={{
-                    width: 140,
-                    height: 100,
-                    objectFit: "cover",
-                    borderRadius: 6,
-                    flexShrink: 0,
-                  }}
-                />
+                <img src={ev.imageUrl} alt={ev.title} className="event-image" />
               )}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 16, color: C.textPrimary, marginBottom: 8 }}>
                   {ev.title}
                 </div>
-                <div><b>Ημ/νία:</b> {formatDT(ev.datetime)}</div>
-                <div><b>Τοποθεσία:</b> {ev.location}</div>
-                <div style={{ margin: "6px 0" }}>{ev.info}</div>
-                <div>
-                  <b>Κόστος:</b>{" "}
-                  {ev.cost == null || ev.cost === "" ? "Δωρεάν" : `${ev.cost} €`}
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, color: C.textSecondary }}>📅 {formatDT(ev.datetime)}</span>
+                  <span style={{ fontSize: 13, color: C.textSecondary }}>📍 {ev.location}</span>
+                  <span className={`badge ${ev.cost == null || ev.cost === "" ? "badge-free" : ""}`} style={ev.cost != null && ev.cost !== "" ? { background: C.accentBg, color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)" } : {}}>
+                    {ev.cost == null || ev.cost === "" ? "Free" : `€${ev.cost}`}
+                  </span>
                 </div>
-                <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <button style={buttonStyle} onClick={() => startEdit(ev)}>
-                    Edit
-                  </button>
-                  <button
-                    style={buttonDangerStyle}
-                    onClick={() => setConfirmDeleteId(ev.id)}
-                  >
-                    Delete
-                  </button>
+                <p style={{ fontSize: 13, color: C.textMuted, margin: "0 0 12px", lineHeight: 1.5 }}>{ev.info}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(ev)}>Edit</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setConfirmDeleteId(ev.id)}>Delete</button>
                 </div>
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
       {confirmDeleteId && (
         <ConfirmModal
-          title="Confirm Delete Event"
-          message="Σίγουρα θες να διαγράψεις αυτό το event;"
+          title="Delete Event"
+          message="Are you sure you want to permanently delete this event?"
           onConfirm={() => deleteEvent(confirmDeleteId)}
           onCancel={() => setConfirmDeleteId(null)}
         />
@@ -1282,15 +1115,77 @@ function Events() {
   );
 }
 
+// ─── Shared UI Helpers ────────────────────────────────────────────────────────
+function PageHeader({ icon, title, count }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 22 }}>{icon}</span>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.textPrimary }}>{title}</h1>
+        {count !== undefined && (
+          <span style={{
+            background: C.accentBg,
+            color: "#a5b4fc",
+            border: "1px solid rgba(99,102,241,0.25)",
+            padding: "2px 10px",
+            borderRadius: 99,
+            fontSize: 12,
+            fontWeight: 600,
+          }}>
+            {count}
+          </span>
+        )}
+      </div>
+      <div style={{ height: 1, background: "rgba(255,255,255,0.06)", marginTop: 16 }} />
+    </div>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13 }}>
+      <span style={{ color: C.textMuted, minWidth: 80, flexShrink: 0 }}>{label}:</span>
+      <span style={{ color: C.textSecondary }}>{value}</span>
+    </div>
+  );
+}
+
+function FormField({ label, children }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{
+        display: "block",
+        fontSize: 12,
+        fontWeight: 600,
+        color: C.textSecondary,
+        marginBottom: 6,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon, text }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-state-icon">{icon}</div>
+      <div className="empty-state-text">{text}</div>
+    </div>
+  );
+}
+
+// ─── App Root ─────────────────────────────────────────────────────────────────
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Παρακολουθούμε το auth state
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Φόρτωσε το user doc για να δεις αν είναι admin
         const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
         if (userDoc.exists() && userDoc.data().isAdmin) {
           setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "admin" });
@@ -1302,13 +1197,20 @@ function App() {
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
+          <div>Loading…</div>
+        </div>
+      </div>
+    );
+  }
 
-  // Το υπόλοιπο router όπως πριν
   return (
     <Router>
       <Routes>
@@ -1330,6 +1232,6 @@ function App() {
       </Routes>
     </Router>
   );
-}//
+}
 
 export default App;
