@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   collection,
   doc,
@@ -22,246 +22,258 @@ import { setPersistence, browserLocalPersistence } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { increment, writeBatch } from "firebase/firestore";
 import { uploadImageToCloudinary } from "./cloudinary";
+import "./App.css";
 
 setPersistence(auth, browserLocalPersistence);
 
-const containerStyle = {
-  maxWidth: 900,
-  margin: "40px auto",
-  backgroundColor: "#fff",
-  borderRadius: 8,
-  padding: 24,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-  color: "#000",
-  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+// ─── Design Tokens ─────────────────────────────────────────────────────────
+const C = {
+  bg: "#0c0c14",
+  sidebar: "#10101a",
+  sidebarBorder: "rgba(255,255,255,0.06)",
+  card: "#1a1a2e",
+  cardBorder: "rgba(255,255,255,0.07)",
+  accent: "#6366f1",
+  accentBg: "rgba(99,102,241,0.15)",
+  danger: "#ef4444",
+  dangerBg: "rgba(239,68,68,0.12)",
+  textPrimary: "#f1f5f9",
+  textSecondary: "#94a3b8",
+  textMuted: "#475569",
+  inputBg: "#13131f",
+  inputBorder: "rgba(255,255,255,0.1)",
 };
 
-const darkBackground = {
-  backgroundColor: "#121212",
-  minHeight: "100vh",
-  color: "#fff",
-  fontWeight: 600,
-  fontSize: 16,
-};
-
-const headerStyle = {
-  fontWeight: "700",
-  marginBottom: 20,
-  fontSize: 24,
-  borderBottom: "2px solid #eee",
-  paddingBottom: 8,
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  marginBottom: 20,
-  borderRadius: 6,
-  border: "1px solid #ccc",
-  fontSize: 16,
-  fontWeight: 600,
-  outline: "none",
-};
-
-const buttonStyle = {
-  padding: "8px 16px",
-  borderRadius: 6,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 700,
-  fontSize: 16,
-  backgroundColor: "#121212",
-  color: "#fff",
-  transition: "background-color 0.3s ease",
-};
-
-const buttonDangerStyle = {
-  ...buttonStyle,
-  backgroundColor: "#bb0000",
-};
-
-const linkStyle = {
-  color: "#fff",
-  textDecoration: "none",
-  fontWeight: 600,
-  marginRight: 20,
-  fontSize: 18,
-  paddingBottom: 4,
-  borderBottom: "2px solid transparent",
-};
-
-const activeLinkStyle = {
-  ...linkStyle,
-  borderBottom: "2px solid #fff",
-};
-
+// ─── Login ──────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      // Έλεγχος admin flag στο users collection
       const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists() && userDoc.data().isAdmin) {
+      if (!userDoc.exists()) {
+        setError("You are not authorized.");
+        return;
+      }
+      const data = userDoc.data();
+      if (data.isAdmin) {
         onLogin({ uid: user.uid, email: user.email, role: "admin" });
         navigate("/admin");
+      } else if (data.isBusiness) {
+        onLogin({ uid: user.uid, email: user.email, role: "business" });
+        navigate("/admin/events");
       } else {
-        setError("You are not authorized as admin.");
+        setError("You are not authorized.");
       }
     } catch {
       setError("Invalid credentials.");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div style={{ ...darkBackground, display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-      <div style={{ backgroundColor: "#fff", padding: 40, borderRadius: 12, width: 350, color: "#121212", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-        <h2 style={{ marginBottom: 20, fontWeight: "700", fontSize: 24, textAlign: "center" }}>Admin Login</h2>
+    <div className="login-bg">
+      <div style={{
+        width: "100%",
+        maxWidth: 380,
+        background: "#1a1a2e",
+        border: `1px solid ${C.cardBorder}`,
+        borderRadius: 16,
+        padding: "40px 32px",
+        boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{
+            width: 52, height: 52,
+            background: C.accentBg,
+            borderRadius: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 24,
+            marginBottom: 14,
+            border: "1px solid rgba(99,102,241,0.3)",
+          }}>⚡</div>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.textPrimary }}>Admin Console</h2>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: C.textMuted }}>Sign in to your account</p>
+        </div>
+
         <form onSubmit={handleSubmit}>
-          <input
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            type="email"
-            required
-            style={inputStyle}
-          />
-          <input
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            type="password"
-            required
-            style={inputStyle}
-          />
-          <button type="submit" style={{ ...buttonStyle, width: "100%" }}>Login</button>
+          <FormField label="Email">
+            <input className="form-input" placeholder="you@example.com" value={email}
+              onChange={e => setEmail(e.target.value)} type="email" required />
+          </FormField>
+          <FormField label="Password">
+            <input className="form-input" placeholder="••••••••" value={password}
+              onChange={e => setPassword(e.target.value)} type="password" required />
+          </FormField>
+          <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ marginTop: 4 }}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
         </form>
-        {error && <p style={{ color: "red", marginTop: 10, fontWeight: 700 }}>{error}</p>}
+
+        {error && (
+          <div style={{
+            marginTop: 14, padding: "10px 14px",
+            background: C.dangerBg, border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 8, color: "#f87171", fontSize: 13, fontWeight: 500,
+          }}>{error}</div>
+        )}
       </div>
     </div>
   );
 }
 
-function NavLink({ to, children }) {
-  const currentPath = window.location.pathname;
-  const isActive = currentPath === to;
+// ─── Sidebar NavLink ────────────────────────────────────────────────────────
+function SidebarLink({ to, icon, children, onClick }) {
+  const location = useLocation();
+  const isActive = location.pathname === to || location.pathname.startsWith(to + "/");
   return (
-    <Link to={to} style={isActive ? activeLinkStyle : linkStyle}>
+    <Link to={to} className={`sidebar-link${isActive ? " active" : ""}`} onClick={onClick}>
+      <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{icon}</span>
       {children}
     </Link>
   );
 }
 
+// ─── Admin Panel Shell ──────────────────────────────────────────────────────
 function AdminPanel({ user, onLogout }) {
-  const linkStyle = (isActive) => ({
-    marginRight: 15,
-    fontWeight: isActive ? "bold" : "normal",
-    borderBottom: isActive ? "2px solid white" : "none",
-    paddingBottom: 4,
-    color: "white",
-    textDecoration: "none",
-  });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = () => setSidebarOpen(false);
+  const isAdmin = user?.role === "admin";
 
   return (
-    <div style={{ padding: 20, backgroundColor: "#121212", minHeight: "100vh", color: "white" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1>Admin Console</h1>
-        <button
-          onClick={onLogout}
-          style={{
-            backgroundColor: "#ffffff",
-            border: "none",
-            color: "#121212",
-            fontWeight: "bold",
-            padding: "8px 16px",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
-        >
-          Logout
-        </button>
-      </header>
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: C.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
-      <nav style={{ marginBottom: 20 }}>
-        <NavLink
-          to="/admin/reports"
-          style={({ isActive }) => linkStyle(isActive)}
-          end
-        >
-          View Reports
-        </NavLink>
-        <NavLink
-          to="/admin/posts"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Posts
-        </NavLink>
-        <NavLink
-          to="/admin/users"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Users
-        </NavLink>
-        <NavLink
-          to="/admin/categories"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          View Categories
-        </NavLink>
-        <NavLink
-          to="/admin/events"
-          style={({ isActive }) => linkStyle(isActive)}
-        >
-          Create Event
-        </NavLink>
-      </nav>
+      {/* Mobile overlay */}
+      {sidebarOpen && <div className="sidebar-overlay" onClick={closeSidebar} />}
 
-      <Routes>
-        <Route path="reports" element={<Reports />} />
-        <Route path="posts" element={<Posts />} />
-        <Route path="users" element={<Users />} />
-        <Route path="categories" element={<Categories />} />
-        <Route path="events" element={<Events />} />
-        <Route path="*" element={<Navigate to="/admin/reports" replace />} />
-      </Routes>
+      {/* Sidebar */}
+      <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
+        {/* Brand */}
+        <div style={{ padding: "20px 16px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 34, height: 34, background: C.accentBg, borderRadius: 9,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, border: "1px solid rgba(99,102,241,0.3)", flexShrink: 0,
+            }}>⚡</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary, lineHeight: 1.2 }}>Admin</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>Console</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="divider" style={{ margin: "4px 16px 10px" }} />
+
+        {/* Nav */}
+        <nav style={{ padding: "0 8px", flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          {isAdmin && <>
+            <SidebarLink to="/admin/users"      icon="👥" onClick={closeSidebar}>Users</SidebarLink>
+            <SidebarLink to="/admin/posts"      icon="📝" onClick={closeSidebar}>Posts</SidebarLink>
+            <SidebarLink to="/admin/categories" icon="🏷️" onClick={closeSidebar}>Categories</SidebarLink>
+            <SidebarLink to="/admin/reports"    icon="🚩" onClick={closeSidebar}>Reports</SidebarLink>
+          </>}
+          <SidebarLink to="/admin/events" icon="📅" onClick={closeSidebar}>Events</SidebarLink>
+        </nav>
+
+        {/* Role badge */}
+        <div style={{ padding: "0 16px 10px" }}>
+          <span className={isAdmin ? "badge badge-admin" : "badge badge-business"}>
+            {isAdmin ? "Admin" : "Business"}
+          </span>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "10px 8px 16px", borderTop: `1px solid ${C.sidebarBorder}` }}>
+          <div style={{ padding: "6px 14px 10px" }}>
+            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>Signed in as</div>
+            <div style={{ fontSize: 12, color: C.textSecondary, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.email}
+            </div>
+          </div>
+          <button className="logout-btn" onClick={onLogout}>
+            <span>↩</span> Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="main-content">
+        {/* Mobile header */}
+        <div className="mobile-header">
+          <button className="hamburger" onClick={() => setSidebarOpen(o => !o)}>☰</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⚡</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.textPrimary }}>Admin Console</span>
+          </div>
+        </div>
+
+        <Routes>
+          {isAdmin && <>
+            <Route path="users"      element={<Users />} />
+            <Route path="posts"      element={<Posts />} />
+            <Route path="categories" element={<Categories />} />
+            <Route path="reports"    element={<Reports />} />
+          </>}
+          <Route path="events" element={<Events />} />
+          <Route path="*" element={<Navigate to={isAdmin ? "/admin/users" : "/admin/events"} replace />} />
+        </Routes>
+      </main>
     </div>
   );
 }
-// -- Reports tab with same styling approach --
 
+// ─── Confirm Modal ──────────────────────────────────────────────────────────
+function ConfirmModal({ title, message, onConfirm, onCancel }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+      justifyContent: "center", zIndex: 9999, padding: 16,
+    }}>
+      <div style={{
+        background: "#1e1e32", border: `1px solid ${C.cardBorder}`, borderRadius: 14,
+        padding: "28px 24px 22px", width: "100%", maxWidth: 360,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+      }}>
+        <div style={{ fontSize: 22, marginBottom: 10 }}>🗑️</div>
+        <h3 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, color: C.textPrimary }}>{title}</h3>
+        <p style={{ margin: "0 0 22px", fontSize: 14, color: C.textSecondary, lineHeight: 1.5 }}>{message}</p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger-solid" onClick={onConfirm}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
 function Reports() {
   const [reports, setReports] = useState([]);
-  const [posts, setPosts] = useState([]);
 
   useEffect(() => {
-    const unsubReports = onSnapshot(collection(db, "reports"), snapshot => {
-      setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsub = onSnapshot(collection(db, "reports"), snapshot => {
+      setReports(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-
-    const unsubPosts = onSnapshot(collection(db, "posts"), snapshot => {
-      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => {
-      unsubReports();
-      unsubPosts();
-    };
+    return () => unsub();
   }, []);
 
   const acceptReport = async (reportId, postId) => {
     if (!reportId) return;
-    if (!postId) {
-      await deleteDoc(doc(db, "reports", reportId));
-      return;
-    }
+    if (!postId) { await deleteDoc(doc(db, "reports", reportId)); return; }
     await deleteDoc(doc(db, "posts", postId));
     await deleteDoc(doc(db, "reports", reportId));
   };
@@ -272,399 +284,201 @@ function Reports() {
 
   return (
     <>
-      <h2 style={headerStyle}>Reports</h2>
+      <PageHeader icon="🚩" title="Reports" count={reports.length} />
       {reports.length === 0 ? (
-        <p style={{ color: "#888" }}>No reports</p>
+        <EmptyState icon="✅" text="No pending reports — all clear!" />
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {reports.map(r => (
-            <li
-              key={r.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-              }}
-            >
-              <b>Post ID:</b> {r.postId} <br />
-              <b>Post Text:</b> {r.postText || "N/A"} <br />
-              <b>Author Email:</b> {r.authorEmail || "N/A"} <br />
-              <b>Reporter Email:</b> {r.reporterEmail || "N/A"} <br />
-              <b>Timestamp:</b> {r.timestamp ? r.timestamp.toDate().toLocaleString() : "N/A"} <br />
-              <b>Reason:</b> {r.reason || "No reason"} <br />
-              <button onClick={() => acceptReport(r.id, r.postId)} style={{ ...buttonDangerStyle, marginRight: 10 }}>
-                Accept & Delete Post
-              </button>
-              <button onClick={() => ignoreReport(r.id)} style={buttonStyle}>
-                Ignore
-              </button>
-            </li>
-          ))}
-        </ul>
+        reports.map(r => (
+          <div key={r.id} className="card">
+            <div className="report-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 10, fontFamily: "monospace" }}>ID: {r.postId}</div>
+                <InfoRow label="Post"     value={r.postText || "N/A"} />
+                <InfoRow label="Author"   value={r.authorEmail || "N/A"} />
+                <InfoRow label="Reporter" value={r.reporterEmail || "N/A"} />
+                <InfoRow label="Reason"   value={r.reason || "No reason"} />
+                <InfoRow label="Date"     value={r.timestamp ? r.timestamp.toDate().toLocaleString() : "N/A"} />
+              </div>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                <button className="btn btn-danger" onClick={() => acceptReport(r.id, r.postId)}>Delete Post</button>
+                <button className="btn btn-ghost"  onClick={() => ignoreReport(r.id)}>Ignore</button>
+              </div>
+            </div>
+          </div>
+        ))
       )}
     </>
   );
 }
 
-// -- Posts tab --
+// ─── Posts ───────────────────────────────────────────────────────────────────
 function Posts() {
   const [posts, setPosts] = useState([]);
-  const [confirmDelete, setConfirmDelete] = useState(null); // Για posts
-  const [confirmDeleteComment, setConfirmDeleteComment] = useState(null); // Για σχόλια
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDeleteComment, setConfirmDeleteComment] = useState(null);
   const [usernames, setUsernames] = useState({});
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentsByPost, setCommentsByPost] = useState({});
   const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    const unsubPosts = onSnapshot(collection(db, "posts"), (snapshot) => {
-      const newPosts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const unsub = onSnapshot(collection(db, "posts"), (snapshot) => {
+      const newPosts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setPosts(newPosts);
-
-      const authorIds = newPosts.map((p) => p.author);
-      const uniqueAuthorIds = [...new Set(authorIds)];
-      uniqueAuthorIds.forEach(async (authorId) => {
-        if (!usernames[authorId]) {
-          const userDoc = await getDoc(doc(db, "users", authorId));
-          if (userDoc.exists()) {
-            setUsernames((prev) => ({
-              ...prev,
-              [authorId]: userDoc.data().name || "Unknown",
-            }));
-          } else {
-            setUsernames((prev) => ({ ...prev, [authorId]: "Unknown" }));
-          }
+      const unique = [...new Set(newPosts.map(p => p.author))];
+      unique.forEach(async (id) => {
+        if (!usernames[id]) {
+          const ud = await getDoc(doc(db, "users", id));
+          setUsernames(prev => ({ ...prev, [id]: ud.exists() ? ud.data().name || "Unknown" : "Unknown" }));
         }
       });
     });
-    return () => unsubPosts();
+    return () => unsub();
   }, [usernames]);
 
-  const toggleExpandPost = async (postId) => {
-    setExpandedPosts((prev) => ({ ...prev, [postId]: !prev[postId] }));
-
-    if (!expandedPosts[postId]) {
-      if (!commentsByPost[postId]) {
-        const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
-        const comments = commentsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-        const commentAuthorIds = comments.map((c) => c.author);
-        const uniqueCommentAuthorIds = [...new Set(commentAuthorIds)];
-        for (const authorId of uniqueCommentAuthorIds) {
-          if (!usernames[authorId]) {
-            const userDoc = await getDoc(doc(db, "users", authorId));
-            if (userDoc.exists()) {
-              setUsernames((prev) => ({
-                ...prev,
-                [authorId]: userDoc.data().name || "Unknown",
-              }));
-            } else {
-              setUsernames((prev) => ({ ...prev, [authorId]: "Unknown" }));
-            }
-          }
+  const toggleExpand = async (postId) => {
+    setExpandedPosts(prev => ({ ...prev, [postId]: !prev[postId] }));
+    if (!expandedPosts[postId] && !commentsByPost[postId]) {
+      const snap = await getDocs(collection(db, "posts", postId, "comments"));
+      const comments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      for (const id of [...new Set(comments.map(c => c.author))]) {
+        if (!usernames[id]) {
+          const ud = await getDoc(doc(db, "users", id));
+          setUsernames(prev => ({ ...prev, [id]: ud.exists() ? ud.data().name || "Unknown" : "Unknown" }));
         }
-        setCommentsByPost((prev) => ({ ...prev, [postId]: comments }));
       }
+      setCommentsByPost(prev => ({ ...prev, [postId]: comments }));
     }
   };
 
   const deleteComment = async (postId, commentId) => {
-  try {
-    // Φέρνουμε το post για να βρούμε τον author
-    const postRef = doc(db, "posts", postId);
-    const postSnap = await getDoc(postRef);
-    if (!postSnap.exists()) {
-      console.log("Post not found");
-      return;
-    }
-    const postData = postSnap.data();
-    const postAuthor = postData.author;
-
-    // Διαγραφή comment
-    const commentRef = doc(db, "posts", postId, "comments", commentId);
-    await deleteDoc(commentRef);
-
-    // Μείωση του commentsReceived στον author του post
-    if (postAuthor) {
-      const userRef = doc(db, "users", postAuthor);
-      await updateDoc(userRef, {
-        commentsReceived: increment(-1),
-      });
-    }
-
-    // Ενημέρωση UI
-    setCommentsByPost((prev) => ({
-      ...prev,
-      [postId]: prev[postId].filter((c) => c.id !== commentId),
-    }));
-    setConfirmDeleteComment(null);
-
-    console.log("Comment deleted and commentsReceived updated");
-  } catch (error) {
-    console.error("Error deleting comment:", error);
-  }
-};
+    try {
+      const postSnap = await getDoc(doc(db, "posts", postId));
+      if (!postSnap.exists()) return;
+      const postAuthor = postSnap.data().author;
+      await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+      if (postAuthor) await updateDoc(doc(db, "users", postAuthor), { commentsReceived: increment(-1) });
+      setCommentsByPost(prev => ({ ...prev, [postId]: prev[postId].filter(c => c.id !== commentId) }));
+      setConfirmDeleteComment(null);
+    } catch (err) { console.error(err); }
+  };
 
   const deletePost = async (postId) => {
-  try {
-    const postRef = doc(db, "posts", postId);
-    const postSnap = await getDoc(postRef);
-    if (!postSnap.exists()) {
-      console.log("Post not found");
-      return;
-    }
+    try {
+      const postSnap = await getDoc(doc(db, "posts", postId));
+      if (!postSnap.exists()) return;
+      const { author, likes = [] } = postSnap.data();
+      const commentsSnap = await getDocs(collection(db, "posts", postId, "comments"));
+      const commentsCount = commentsSnap.size;
+      const likesCount = likes.filter(uid => uid !== author).length;
+      const batch = writeBatch(db);
+      const userRef = doc(db, "users", author);
+      if (commentsCount > 0) batch.update(userRef, { commentsReceived: increment(-commentsCount) });
+      if (likesCount > 0)    batch.update(userRef, { likesReceived: increment(-likesCount) });
+      batch.delete(doc(db, "posts", postId));
+      await batch.commit();
+      setConfirmDelete(null);
+    } catch (err) { console.error(err); }
+  };
 
-    const postData = postSnap.data();
-    const postAuthor = postData.author;
+  const fmt = (ts) => {
+    if (!ts) return "No date";
+    if (ts.toDate) return ts.toDate().toLocaleString();
+    return String(ts);
+  };
 
-    // Φέρε comments του post
-    const commentsSnapshot = await getDocs(collection(db, "posts", postId, "comments"));
-    const commentsCount = commentsSnapshot.size;
-
-    // Πόσοι έκαναν like (εκτός του author)
-    const likes = postData.likes || [];
-    const likesCount = likes.filter(userId => userId !== postAuthor).length;
-
-    const userRef = doc(db, "users", postAuthor);
-    const batch = writeBatch(db);
-
-    // Μείωσε commentsReceived και likesReceived στον χρήστη
-    if (commentsCount > 0) {
-      batch.update(userRef, {
-        commentsReceived: increment(-commentsCount),
-      });
-    }
-    if (likesCount > 0) {
-      batch.update(userRef, {
-        likesReceived: increment(-likesCount),
-      });
-    }
-
-    // Διαγραφή post
-    batch.delete(postRef);
-
-    await batch.commit();
-
-    // Κάνε update το UI
-    setConfirmDelete(null);
-    console.log("Post deleted and counters updated successfully");
-  } catch (err) {
-    console.error("Error deleting post:", err);
-  }
-};
-
-  const filteredPosts = posts.filter((post) => {
-    const text = searchText.toLowerCase();
-    const authorName = usernames[post.author]?.toLowerCase() || "";
-    return post.text.toLowerCase().includes(text) || authorName.includes(text);
+  const filtered = posts.filter(p => {
+    const t = searchText.toLowerCase();
+    return p.text?.toLowerCase().includes(t) || (usernames[p.author] || "").toLowerCase().includes(t);
   });
-
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return "No date";
-    if (timestamp.toDate) return timestamp.toDate().toLocaleString();
-    if (timestamp instanceof Date) return timestamp.toLocaleString();
-    return String(timestamp);
-  };
-
-  const buttonStyle = {
-    padding: "6px 12px",
-    borderRadius: 4,
-    border: "none",
-    cursor: "pointer",
-  };
-
-  const buttonDangerStyle = {
-    ...buttonStyle,
-    backgroundColor: "#d33",
-    color: "white",
-  };
 
   return (
     <>
-      <h2 style={{ color: "#121212" }}>Posts</h2>
-      <input
-        type="text"
-        placeholder="Search by post text or author..."
-        value={searchText}
-        onChange={(e) => setSearchText(e.target.value)}
-        style={{
-          marginBottom: 15,
-          width: "100%",
-          padding: 8,
-          borderRadius: 6,
-          border: "1px solid #ccc",
-          fontSize: 16,
-        }}
-      />
-      {filteredPosts.length === 0 ? (
-        <p style={{ color: "#888" }}>No posts found</p>
-      ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {filteredPosts.map((p) => (
-            <li
-              key={p.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-              }}
-            >
-              <b>{usernames[p.author] || "Unknown"}</b>: {p.text}
-              <br />
-              <small style={{ color: "#555" }}>{formatTimestamp(p.timestamp)}</small>
-              <br />
-              <button
-                style={{ ...buttonDangerStyle, marginRight: 10 }}
-                onClick={() => setConfirmDelete(p.id)}
-              >
-                Delete Post
-              </button>
-              <button
-                onClick={() => toggleExpandPost(p.id)}
-                style={{ ...buttonStyle }}
-              >
-                {expandedPosts[p.id] ? "Hide Comments" : "Show Comments"}
-              </button>
+      <PageHeader icon="📝" title="Posts" count={posts.length} />
+      <div className="search-wrap">
+        <span className="search-icon">🔍</span>
+        <input className="search-input" placeholder="Search posts or authors…"
+          value={searchText} onChange={e => setSearchText(e.target.value)} />
+      </div>
 
-              {expandedPosts[p.id] && (
-                <ul style={{ marginTop: 10, paddingLeft: 20 }}>
-                  {commentsByPost[p.id] && commentsByPost[p.id].length > 0 ? (
-                    commentsByPost[p.id].map((c) => (
-                      <li
-                        key={c.id}
-                        style={{
-                          marginBottom: 6,
-                          backgroundColor: "#f9f9f9",
-                          padding: 8,
-                          borderRadius: 6,
-                          color: "#121212",
-                        }}
-                      >
-                        <b>{usernames[c.author] || "Unknown"}</b>: {c.text}
-                        <br />
-                        <small style={{ color: "#555" }}>{formatTimestamp(c.timestamp)}</small>
-                        <button
-                          style={{
-                            ...buttonDangerStyle,
-                            marginLeft: 10,
-                            padding: "4px 10px",
-                            fontSize: 12,
-                          }}
-                          onClick={() =>
-                            setConfirmDeleteComment({ postId: p.id, commentId: c.id })
-                          }
-                        >
-                          Delete Comment
+      {filtered.length === 0 ? <EmptyState icon="📭" text="No posts found" /> : (
+        filtered.map(p => (
+          <div key={p.id} className="card">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Avatar name={usernames[p.author]} />
+              <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{usernames[p.author] || "Unknown"}</span>
+              <span style={{ fontSize: 12, color: C.textMuted }}>{fmt(p.timestamp)}</span>
+            </div>
+            <p style={{ margin: "0 0 12px", fontSize: 14, color: C.textSecondary, lineHeight: 1.6 }}>{p.text}</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(p.id)}>Delete Post</button>
+              <button className="btn btn-ghost  btn-sm" onClick={() => toggleExpand(p.id)}>
+                {expandedPosts[p.id] ? "▲ Hide Comments" : "▼ Show Comments"}
+              </button>
+            </div>
+
+            {expandedPosts[p.id] && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.cardBorder}` }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+                  Comments ({(commentsByPost[p.id] || []).length})
+                </div>
+                {(commentsByPost[p.id] || []).length > 0 ? (
+                  commentsByPost[p.id].map(c => (
+                    <div key={c.id} className="comment-item">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, color: "#a5b4fc" }}>{usernames[c.author] || "Unknown"}</span>
+                          <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>{fmt(c.timestamp)}</span>
+                          <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSecondary }}>{c.text}</p>
+                        </div>
+                        <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }}
+                          onClick={() => setConfirmDeleteComment({ postId: p.id, commentId: c.id })}>
+                          Delete
                         </button>
-                      </li>
-                    ))
-                  ) : (
-                    <li style={{ fontStyle: "italic", color: "#666" }}>No comments</li>
-                  )}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>No comments</p>
+                )}
+              </div>
+            )}
+          </div>
+        ))
       )}
 
-      {/* Confirm διαγραφή post */}
       {confirmDelete && (
-        <ConfirmModal
-          title="Confirm Delete Post"
-          message="Are you sure you want to delete this post?"
-          onConfirm={() => deletePost(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
-        />
+        <ConfirmModal title="Delete Post"
+          message="This will permanently delete the post and update user stats."
+          onConfirm={() => deletePost(confirmDelete)} onCancel={() => setConfirmDelete(null)} />
       )}
-
-      {/* Confirm διαγραφή comment */}
       {confirmDeleteComment && (
-        <ConfirmModal
-          title="Confirm Delete Comment"
-          message="Are you sure you want to delete this comment?"
-          onConfirm={() =>
-            deleteComment(confirmDeleteComment.postId, confirmDeleteComment.commentId)
-          }
-          onCancel={() => setConfirmDeleteComment(null)}
-        />
+        <ConfirmModal title="Delete Comment"
+          message="Are you sure you want to permanently delete this comment?"
+          onConfirm={() => deleteComment(confirmDeleteComment.postId, confirmDeleteComment.commentId)}
+          onCancel={() => setConfirmDeleteComment(null)} />
       )}
     </>
   );
 }
 
-function ConfirmModal({ title, message, onConfirm, onCancel }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0, left: 0, width: "100vw", height: "100vh",
-        backgroundColor: "rgba(0,0,0,0.5)",
-        display: "flex", justifyContent: "center", alignItems: "center",
-        zIndex: 9999,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: "#222",
-          padding: 20,
-          borderRadius: 8,
-          width: 320,
-          textAlign: "center",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.7)",
-          color: "#eee"
-        }}
-      >
-        <h3>{title}</h3>
-        <p>{message}</p>
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "space-around" }}>
-          <button
-            onClick={onConfirm}
-            style={{ padding: "8px 16px", backgroundColor: "#d33", color: "white", border: "none", borderRadius: 4 }}
-          >
-            Yes, Delete
-          </button>
-          <button
-            onClick={onCancel}
-            style={{ padding: "8px 16px", borderRadius: 4 }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -- Users tab --
-
+// ─── Users ───────────────────────────────────────────────────────────────────
 function Users() {
   const [users, setUsers] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
-  const [newUsername, setNewUsername] = useState('');
-  const [searchText, setSearchText] = useState('');
+  const [newUsername, setNewUsername] = useState("");
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), snapshot => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
-  const deleteUser = async (id) => {
-    await deleteDoc(doc(db, "users", id));
-  };
+  const deleteUser = async (id) => { await deleteDoc(doc(db, "users", id)); };
 
-  const startEdit = (user) => {
-    setEditingUser(user);
-    setNewUsername(user.name);
-  };
+  const startEdit = (user) => { setEditingUser(user); setNewUsername(user.name || ""); };
 
   const saveUsername = async () => {
     await updateDoc(doc(db, "users", editingUser.id), { name: newUsername });
@@ -672,295 +486,165 @@ function Users() {
   };
 
   const togglePermBan = async (userId, currentStatus) => {
-    const newStatus = currentStatus === "perm" ? "none" : "perm";
-    await updateDoc(doc(db, "users", userId), { banStatus: newStatus });
+    await updateDoc(doc(db, "users", userId), { banStatus: currentStatus === "perm" ? "none" : "perm" });
   };
 
-  const filteredUsers = users.filter(user => {
-    const text = searchText.toLowerCase();
-    return (
-      (user.name && user.name.toLowerCase().includes(text)) ||
-      (user.email && user.email.toLowerCase().includes(text))
-    );
+  const filtered = users.filter(u => {
+    const t = searchText.toLowerCase();
+    return (u.name || "").toLowerCase().includes(t) || (u.email || "").toLowerCase().includes(t);
   });
 
   return (
-    <div style={{ color: "white", backgroundColor: "#121212", minHeight: "100vh", padding: 20 }}>
-      <h2 style={{ fontWeight: "bold", marginBottom: 15 }}>Users</h2>
-      <input
-        type="text"
-        placeholder="Search by name or email..."
-        value={searchText}
-        onChange={e => setSearchText(e.target.value)}
-        style={{
-          marginBottom: 15,
-          width: "100%",
-          padding: "10px",
-          borderRadius: 6,
-          border: "1px solid #444",
-          backgroundColor: "#1E1E1E",
-          color: "white",
-          fontWeight: "bold"
-        }}
-      />
-      {filteredUsers.length === 0 ? <p>No users found</p> : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {filteredUsers.map(u => (
-            <li key={u.id} style={{ marginBottom: 20, borderBottom: "1px solid #333", paddingBottom: 12 }}>
-              {editingUser?.id === u.id ? (
-                <>
-                  <input
-                    value={newUsername}
+    <>
+      <PageHeader icon="👥" title="Users" count={users.length} />
+      <div className="search-wrap">
+        <span className="search-icon">🔍</span>
+        <input className="search-input" placeholder="Search by name or email…"
+          value={searchText} onChange={e => setSearchText(e.target.value)} />
+      </div>
+
+      {filtered.length === 0 ? <EmptyState icon="👤" text="No users found" /> : (
+        filtered.map(u => (
+          <div key={u.id} className="card">
+            {editingUser?.id === u.id ? (
+              /* Edit mode */
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <input className="form-input" value={newUsername}
                     onChange={e => setNewUsername(e.target.value)}
-                    style={{
-                      padding: "8px",
-                      borderRadius: 5,
-                      border: "1px solid #444",
-                      backgroundColor: "#1E1E1E",
-                      color: "white",
-                      fontWeight: "bold",
-                      marginRight: 10,
-                      width: "200px"
-                    }}
-                  />
-                  <button
-                    onClick={saveUsername}
-                    style={{
-                      padding: "8px 12px",
-                      backgroundColor: "#bb86fc",
-                      border: "none",
-                      color: "#121212",
-                      fontWeight: "bold",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      marginRight: 10,
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingUser(null)}
-                    style={{
-                      padding: "8px 12px",
-                      backgroundColor: "#333",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer"
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <label style={{ marginLeft: 20, userSelect: "none" }}>
-                    <input
-                      type="checkbox"
-                      checked={u.isAdmin || false}
-                      onChange={async e => {
-                        await updateDoc(doc(db, "users", u.id), { isAdmin: e.target.checked });
-                      }}
-                      style={{ marginRight: 6 }}
-                    />
+                    autoFocus style={{ flex: "1 1 180px", maxWidth: 240 }} />
+                  <button className="btn btn-primary btn-sm" onClick={saveUsername}>Save</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingUser(null)}>Cancel</button>
+                </div>
+                {/* Role checkboxes */}
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                  <label className="check-label">
+                    <input type="checkbox" checked={u.isAdmin || false}
+                      onChange={async e => await updateDoc(doc(db, "users", u.id), { isAdmin: e.target.checked })} />
                     Admin
                   </label>
-                </>
-              ) : (
-                <>
-                  <b>{u.name}</b> ({u.email}) {u.isAdmin && <span style={{ color: '#bb86fc' }}>[Admin]</span>}
-                  <button
-                    onClick={() => startEdit(u)}
-                    style={{
-                      marginLeft: 15,
-                      padding: "6px 10px",
-                      backgroundColor: "#444",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteUser(u.id)}
-                    style={{
-                      marginLeft: 10,
-                      padding: "6px 10px",
-                      backgroundColor: "#b00020",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                  >
-                    Delete
-                  </button>
-
-                  {/* Toggle Perm Ban */}
-                  <button
-                    onClick={() => togglePermBan(u.id, u.banStatus)}
-                    style={{
-                      marginLeft: 10,
-                      padding: "6px 10px",
-                      backgroundColor: u.banStatus === "perm" ? "#b00020" : "#444",
-                      border: "none",
-                      color: "white",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      fontWeight: "bold"
-                    }}
-                    title="Toggle Permanent Ban"
-                  >
+                  <label className="check-label">
+                    <input type="checkbox" checked={u.isBusiness || false}
+                      onChange={async e => await updateDoc(doc(db, "users", u.id), { isBusiness: e.target.checked })} />
+                    Business
+                  </label>
+                </div>
+              </div>
+            ) : (
+              /* View mode */
+              <div className="user-card-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                  <Avatar name={u.name} banned={u.banStatus === "perm"} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{u.name || "Unnamed"}</span>
+                      {u.isAdmin    && <span className="badge badge-admin">Admin</span>}
+                      {u.isBusiness && <span className="badge badge-business">Business</span>}
+                      {u.banStatus === "perm" && <span className="badge badge-banned">Banned</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {u.email}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>Edit</button>
+                  <button className="btn btn-sm"
+                    style={u.banStatus === "perm"
+                      ? { background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }
+                      : { background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
+                    onClick={() => togglePermBan(u.id, u.banStatus)}>
                     {u.banStatus === "perm" ? "Unban" : "Perm Ban"}
                   </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// -- Categories tab --
-
-function Categories() {
-  const [categories, setCategories] = useState([]);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [editingCategory, setEditingCategory] = useState(null);
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "categories"), (snapshot) => {
-      setCategories(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsub();
-  }, []);
-
-  const addCategory = async () => {
-    if (newCategoryName.trim() === "") return;
-    const newCatRef = doc(collection(db, "categories"));
-    await setDoc(newCatRef, { name: newCategoryName.trim(), pinned: false });
-    setNewCategoryName("");
-  };
-
-  const deleteCategory = async (id) => {
-    await deleteDoc(doc(db, "categories", id));
-  };
-
-  const startEdit = (category) => {
-    setEditingCategory(category);
-    setNewCategoryName(category.name);
-  };
-
-  const saveCategory = async () => {
-    await updateDoc(doc(db, "categories", editingCategory.id), { name: newCategoryName });
-    setEditingCategory(null);
-    setNewCategoryName("");
-  };
-
-  const togglePinned = async (id, currentPinned) => {
-    await updateDoc(doc(db, "categories", id), { pinned: !currentPinned });
-  };
-
-  return (
-    <>
-      <h2 style={headerStyle}>Categories</h2>
-      <div style={{ marginBottom: 20, display: "flex", gap: 12, alignItems: "center" }}>
-        <input
-          placeholder="New category name"
-          value={newCategoryName}
-          onChange={(e) => setNewCategoryName(e.target.value)}
-          style={{ ...inputStyle, marginBottom: 0, flex: "1 1 auto" }}
-        />
-        <button style={buttonStyle} onClick={addCategory}>
-          Add
-        </button>
-      </div>
-      {categories.length === 0 ? (
-        <p style={{ color: "#888" }}>No categories</p>
-      ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {categories.map((c) => (
-            <li
-              key={c.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-              }}
-            >
-              {editingCategory?.id === c.id ? (
-                <>
-                  <input
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    style={{ ...inputStyle, marginBottom: 8, flex: "1 1 auto", minWidth: 150 }}
-                  />
-                  <button style={buttonStyle} onClick={saveCategory}>
-                    Save
-                  </button>
-                  <button
-                    style={{ ...buttonDangerStyle, marginLeft: 10 }}
-                    onClick={() => setEditingCategory(null)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div style={{ flex: "1 1 300px" }}>
-                    <b>{c.name}</b> {c.pinned && <span style={{ color: "#bb86fc" }}>(Pinned)</span>}
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => startEdit(c)}
-                      style={{ ...buttonStyle, marginRight: 10 }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteCategory(c.id)}
-                      style={buttonDangerStyle}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => togglePinned(c.id, c.pinned)}
-                      style={buttonStyle}
-                    >
-                      {c.pinned ? "Unpin" : "Pin"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+                  <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.id)}>Delete</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))
       )}
     </>
   );
 }
 
-// -- Events tab (Create / List / Edit / Delete) --
+// ─── Categories ──────────────────────────────────────────────────────────────
+function Categories() {
+  const [categories, setCategories] = useState([]);
+  const [inputVal, setInputVal] = useState("");
+  const [editingCategory, setEditingCategory] = useState(null);
 
-function Events() {
-  const emptyForm = {
-    title: "",
-    datetime: "",     // "YYYY-MM-DDTHH:mm" από input type="datetime-local"
-    location: "",
-    info: "",
-    cost: "",         // προαιρετικό
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "categories"), snap => {
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  const addCategory = async () => {
+    if (!inputVal.trim()) return;
+    await setDoc(doc(collection(db, "categories")), { name: inputVal.trim(), pinned: false });
+    setInputVal("");
   };
 
+  const deleteCategory = async (id) => { await deleteDoc(doc(db, "categories", id)); };
+
+  const startEdit = (cat) => { setEditingCategory(cat); setInputVal(cat.name); };
+
+  const saveCategory = async () => {
+    await updateDoc(doc(db, "categories", editingCategory.id), { name: inputVal });
+    setEditingCategory(null);
+    setInputVal("");
+  };
+
+  const cancelEdit = () => { setEditingCategory(null); setInputVal(""); };
+
+  const togglePinned = async (id, current) => {
+    await updateDoc(doc(db, "categories", id), { pinned: !current });
+  };
+
+  return (
+    <>
+      <PageHeader icon="🏷️" title="Categories" count={categories.length} />
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+        <input className="form-input" style={{ flex: 1 }}
+          placeholder={editingCategory ? `Editing: ${editingCategory.name}` : "New category name…"}
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && (editingCategory ? saveCategory() : addCategory())} />
+        <button className="btn btn-primary" onClick={editingCategory ? saveCategory : addCategory}>
+          {editingCategory ? "Save" : "+ Add"}
+        </button>
+        {editingCategory && <button className="btn btn-ghost" onClick={cancelEdit}>Cancel</button>}
+      </div>
+
+      {categories.length === 0 ? (
+        <EmptyState icon="🏷️" text="No categories yet — add one above" />
+      ) : (
+        categories.map(c => (
+          <div key={c.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 15 }}>🏷️</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{c.name}</span>
+              {c.pinned && <span className="badge badge-pinned">Pinned</span>}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => togglePinned(c.id, c.pinned)}>
+                {c.pinned ? "Unpin" : "📌 Pin"}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(c)}>Edit</button>
+              <button className="btn btn-danger btn-sm" onClick={() => deleteCategory(c.id)}>Delete</button>
+            </div>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+function Events() {
+  const emptyForm = { title: "", datetime: "", location: "", info: "", cost: "" };
   const [events, setEvents] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [imageFile, setImageFile] = useState(null);
@@ -973,19 +657,15 @@ function Events() {
 
   useEffect(() => {
     const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setEvents(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const unsub = onSnapshot(q, snap => {
+      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
   const resetForm = () => {
-    setForm(emptyForm);
-    setImageFile(null);
-    setImagePreview(null);
-    setEditingId(null);
-    setExistingImageUrl(null);
-    setError("");
+    setForm(emptyForm); setImageFile(null); setImagePreview(null);
+    setEditingId(null); setExistingImageUrl(null); setError("");
   };
 
   const onFileChange = (e) => {
@@ -997,52 +677,31 @@ function Events() {
 
   const startEdit = (ev) => {
     setEditingId(ev.id);
-    // Μετατρέπω το Timestamp σε string για το input datetime-local
     let dt = "";
     if (ev.datetime) {
       const d = ev.datetime.toDate ? ev.datetime.toDate() : new Date(ev.datetime);
-      // YYYY-MM-DDTHH:mm (local)
-      const pad = (n) => String(n).padStart(2, "0");
-      dt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      const pad = n => String(n).padStart(2, "0");
+      dt = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
-    setForm({
-      title: ev.title || "",
-      datetime: dt,
-      location: ev.location || "",
-      info: ev.info || "",
-      cost: ev.cost != null ? String(ev.cost) : "",
-    });
-    setImageFile(null);
-    setImagePreview(null);
-    setExistingImageUrl(ev.imageUrl || null);
-    setError("");
+    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "" });
+    setImageFile(null); setImagePreview(null); setExistingImageUrl(ev.imageUrl || null); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-
+    e.preventDefault(); setError("");
     if (!form.title.trim() || !form.datetime || !form.location.trim() || !form.info.trim()) {
-      setError("Συμπλήρωσε title, ημ/νία, τοποθεσία και πληροφορίες.");
+      setError("Please fill in title, date/time, location, and description.");
       return;
     }
-    if (!editingId && !imageFile) {
-      setError("Διάλεξε μια εικόνα για το event.");
-      return;
-    }
-
+    if (!editingId && !imageFile) { setError("Please select an image for the event."); return; }
     setSaving(true);
     try {
-      let imageUrl = existingImageUrl;
-      let imagePublicId = null;
-
+      let imageUrl = existingImageUrl, imagePublicId = null;
       if (imageFile) {
-        const uploaded = await uploadImageToCloudinary(imageFile);
-        imageUrl = uploaded.url;
-        imagePublicId = uploaded.publicId;
+        const up = await uploadImageToCloudinary(imageFile);
+        imageUrl = up.url; imagePublicId = up.publicId;
       }
-
       const payload = {
         title: form.title.trim(),
         datetime: Timestamp.fromDate(new Date(form.datetime)),
@@ -1052,35 +711,19 @@ function Events() {
         imageUrl: imageUrl || null,
       };
       if (imagePublicId) payload.imagePublicId = imagePublicId;
-
       if (editingId) {
-        await updateDoc(doc(db, "events", editingId), {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "events", editingId), { ...payload, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, "events"), {
-          ...payload,
-          createdAt: serverTimestamp(),
-        });
+        await addDoc(collection(db, "events"), { ...payload, createdAt: serverTimestamp() });
       }
-
       resetForm();
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Αποτυχία αποθήκευσης.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { console.error(err); setError(err.message || "Failed to save event."); }
+    finally { setSaving(false); }
   };
 
   const deleteEvent = async (id) => {
-    try {
-      await deleteDoc(doc(db, "events", id));
-      setConfirmDeleteId(null);
-    } catch (err) {
-      console.error("Error deleting event:", err);
-    }
+    try { await deleteDoc(doc(db, "events", id)); setConfirmDeleteId(null); }
+    catch (err) { console.error(err); }
   };
 
   const formatDT = (ts) => {
@@ -1091,209 +734,196 @@ function Events() {
 
   return (
     <>
-      <h2 style={headerStyle}>{editingId ? "Edit Event" : "Create Event"}</h2>
+      <PageHeader icon="📅" title="Events" count={events.length} />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          backgroundColor: "#fff",
-          color: "#121212",
-          padding: 20,
-          borderRadius: 8,
-          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-          marginBottom: 30,
-        }}
-      >
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Τίτλος *
-        </label>
-        <input
-          style={inputStyle}
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="π.χ. Live μουσική στο magazi"
-          required
-        />
+      {/* Form */}
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "22px 20px", marginBottom: 32 }}>
+        <h3 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700, color: C.textPrimary }}>
+          {editingId ? "✏️ Edit Event" : "➕ New Event"}
+        </h3>
+        <form onSubmit={handleSubmit}>
+          <FormField label="Title *">
+            <input className="form-input" value={form.title}
+              onChange={e => setForm({ ...form, title: e.target.value })}
+              placeholder="e.g. Live Music Night" required />
+          </FormField>
 
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Ημερομηνία & Ώρα *
-        </label>
-        <input
-          style={inputStyle}
-          type="datetime-local"
-          value={form.datetime}
-          onChange={(e) => setForm({ ...form, datetime: e.target.value })}
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Τοποθεσία *
-        </label>
-        <input
-          style={inputStyle}
-          value={form.location}
-          onChange={(e) => setForm({ ...form, location: e.target.value })}
-          placeholder="π.χ. Ερμού 15, Αθήνα"
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Πληροφορίες *
-        </label>
-        <textarea
-          style={{ ...inputStyle, minHeight: 100, fontFamily: "inherit" }}
-          value={form.info}
-          onChange={(e) => setForm({ ...form, info: e.target.value })}
-          placeholder="Περιγραφή του event..."
-          required
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Κόστος (προαιρετικό, σε €)
-        </label>
-        <input
-          style={inputStyle}
-          type="number"
-          min="0"
-          step="0.01"
-          value={form.cost}
-          onChange={(e) => setForm({ ...form, cost: e.target.value })}
-          placeholder="άφησέ το κενό αν είναι δωρεάν"
-        />
-
-        <label style={{ fontWeight: 700, display: "block", marginBottom: 6 }}>
-          Εικόνα {editingId ? "(άφησέ το κενό για να κρατήσει την υπάρχουσα)" : "*"}
-        </label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          style={{ marginBottom: 20 }}
-        />
-
-        {(imagePreview || existingImageUrl) && (
-          <div style={{ marginBottom: 20 }}>
-            <img
-              src={imagePreview || existingImageUrl}
-              alt="preview"
-              style={{
-                maxWidth: 240,
-                maxHeight: 180,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-              }}
-            />
+          <div className="events-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <FormField label="Date & Time *">
+              <input className="form-input" type="datetime-local" value={form.datetime}
+                onChange={e => setForm({ ...form, datetime: e.target.value })} required />
+            </FormField>
+            <FormField label="Cost (€) — blank = free">
+              <input className="form-input" type="number" min="0" step="0.01" value={form.cost}
+                onChange={e => setForm({ ...form, cost: e.target.value })} placeholder="Free if empty" />
+            </FormField>
           </div>
-        )}
 
-        {error && (
-          <p style={{ color: "#bb0000", fontWeight: 700, marginBottom: 10 }}>
-            {error}
-          </p>
-        )}
+          <FormField label="Location *">
+            <input className="form-input" value={form.location}
+              onChange={e => setForm({ ...form, location: e.target.value })}
+              placeholder="e.g. 15 Ermou St, Athens" required />
+          </FormField>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button type="submit" style={buttonStyle} disabled={saving}>
-            {saving ? "Saving..." : editingId ? "Save Changes" : "Create"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              style={buttonDangerStyle}
-              onClick={resetForm}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+          <FormField label="Description *">
+            <textarea className="form-input" value={form.info}
+              onChange={e => setForm({ ...form, info: e.target.value })}
+              placeholder="Event description…" required style={{ minHeight: 90, resize: "vertical" }} />
+          </FormField>
 
-      <h2 style={headerStyle}>All Events</h2>
-      {events.length === 0 ? (
-        <p style={{ color: "#888" }}>No events yet</p>
-      ) : (
-        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {events.map((ev) => (
-            <li
-              key={ev.id}
-              style={{
-                backgroundColor: "#fff",
-                color: "#121212",
-                padding: 20,
-                marginBottom: 16,
-                borderRadius: 8,
-                boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                display: "flex",
-                gap: 16,
-                alignItems: "flex-start",
-              }}
-            >
-              {ev.imageUrl && (
-                <img
-                  src={ev.imageUrl}
-                  alt={ev.title}
-                  style={{
-                    width: 140,
-                    height: 100,
-                    objectFit: "cover",
-                    borderRadius: 6,
-                    flexShrink: 0,
-                  }}
-                />
+          <FormField label={editingId ? "Image (blank = keep existing)" : "Image *"}>
+            <label htmlFor="ev-img" style={{
+              display: "block", border: `2px dashed ${C.inputBorder}`, borderRadius: 8,
+              padding: 20, textAlign: "center", cursor: "pointer",
+            }}>
+              <input type="file" accept="image/*" onChange={onFileChange} id="ev-img" style={{ display: "none" }} />
+              {(imagePreview || existingImageUrl) ? (
+                <img src={imagePreview || existingImageUrl} alt="preview"
+                  style={{ maxWidth: "100%", maxHeight: 140, borderRadius: 8, objectFit: "cover" }} />
+              ) : (
+                <>
+                  <div style={{ fontSize: 26, marginBottom: 6 }}>🖼️</div>
+                  <div style={{ fontSize: 13, color: C.textMuted }}>Click to upload image</div>
+                </>
               )}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
-                  {ev.title}
+            </label>
+          </FormField>
+
+          {error && (
+            <div style={{ padding: "10px 14px", background: C.dangerBg, border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, color: "#f87171", fontSize: 13, marginBottom: 14 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Saving…" : editingId ? "Save Changes" : "Create Event"}
+            </button>
+            {editingId && <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={saving}>Cancel</button>}
+          </div>
+        </form>
+      </div>
+
+      {/* List */}
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: C.textPrimary, margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+        All Events
+        <span style={{ background: C.accentBg, color: "#a5b4fc", padding: "2px 8px", borderRadius: 99, fontSize: 12 }}>{events.length}</span>
+      </h3>
+
+      {events.length === 0 ? <EmptyState icon="📅" text="No events yet — create one above" /> : (
+        events.map(ev => (
+          <div key={ev.id} className="card">
+            <div className="event-card-row" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+              {ev.imageUrl && <img src={ev.imageUrl} alt={ev.title} className="event-image" />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: C.textPrimary, marginBottom: 6 }}>{ev.title}</div>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: C.textSecondary }}>📅 {formatDT(ev.datetime)}</span>
+                  <span style={{ fontSize: 13, color: C.textSecondary }}>📍 {ev.location}</span>
+                  <span className={ev.cost == null || ev.cost === "" ? "badge badge-free" : "badge badge-admin"}>
+                    {ev.cost == null || ev.cost === "" ? "Free" : `€${ev.cost}`}
+                  </span>
                 </div>
-                <div><b>Ημ/νία:</b> {formatDT(ev.datetime)}</div>
-                <div><b>Τοποθεσία:</b> {ev.location}</div>
-                <div style={{ margin: "6px 0" }}>{ev.info}</div>
-                <div>
-                  <b>Κόστος:</b>{" "}
-                  {ev.cost == null || ev.cost === "" ? "Δωρεάν" : `${ev.cost} €`}
-                </div>
-                <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <button style={buttonStyle} onClick={() => startEdit(ev)}>
-                    Edit
-                  </button>
-                  <button
-                    style={buttonDangerStyle}
-                    onClick={() => setConfirmDeleteId(ev.id)}
-                  >
-                    Delete
-                  </button>
+                <p style={{ fontSize: 13, color: C.textMuted, margin: "0 0 10px", lineHeight: 1.5 }}>{ev.info}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-ghost btn-sm"  onClick={() => startEdit(ev)}>Edit</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setConfirmDeleteId(ev.id)}>Delete</button>
                 </div>
               </div>
-            </li>
-          ))}
-        </ul>
+            </div>
+          </div>
+        ))
       )}
 
       {confirmDeleteId && (
-        <ConfirmModal
-          title="Confirm Delete Event"
-          message="Σίγουρα θες να διαγράψεις αυτό το event;"
-          onConfirm={() => deleteEvent(confirmDeleteId)}
-          onCancel={() => setConfirmDeleteId(null)}
-        />
+        <ConfirmModal title="Delete Event"
+          message="Are you sure you want to permanently delete this event?"
+          onConfirm={() => deleteEvent(confirmDeleteId)} onCancel={() => setConfirmDeleteId(null)} />
       )}
     </>
   );
 }
 
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+function Avatar({ name, banned }) {
+  return (
+    <div style={{
+      width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+      background: banned ? "rgba(239,68,68,0.15)" : "rgba(99,102,241,0.15)",
+      border: `1px solid ${banned ? "rgba(239,68,68,0.3)" : "rgba(99,102,241,0.3)"}`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 700, fontSize: 13,
+      color: banned ? "#f87171" : "#a5b4fc",
+    }}>
+      {(name || "?")[0]?.toUpperCase()}
+    </div>
+  );
+}
+
+function PageHeader({ icon, title, count }) {
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 20 }}>{icon}</span>
+        <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: C.textPrimary }}>{title}</h1>
+        {count !== undefined && (
+          <span style={{ background: C.accentBg, color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)", padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>
+            {count}
+          </span>
+        )}
+      </div>
+      <div style={{ height: 1, background: "rgba(255,255,255,0.06)", marginTop: 14 }} />
+    </div>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13 }}>
+      <span style={{ color: C.textMuted, minWidth: 70, flexShrink: 0 }}>{label}:</span>
+      <span style={{ color: C.textSecondary }}>{value}</span>
+    </div>
+  );
+}
+
+function FormField({ label, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textSecondary, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon, text }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-state-icon">{icon}</div>
+      <div className="empty-state-text">{text}</div>
+    </div>
+  );
+}
+
+// ─── App Root ────────────────────────────────────────────────────────────────
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Παρακολουθούμε το auth state
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Φόρτωσε το user doc για να δεις αν είναι admin
         const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists() && userDoc.data().isAdmin) {
-          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "admin" });
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.isAdmin) {
+            setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "admin" });
+          } else if (data.isBusiness) {
+            setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "business" });
+          } else {
+            setUser(null);
+          }
         } else {
           setUser(null);
         }
@@ -1302,25 +932,29 @@ function App() {
       }
       setLoading(false);
     });
-
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>⚡</div>
+          <div>Loading…</div>
+        </div>
+      </div>
+    );
+  }
 
-  // Το υπόλοιπο router όπως πριν
   return (
     <Router>
       <Routes>
-        <Route
-          path="/"
-          element={user ? <Navigate to="/admin" /> : <Navigate to="/admin/login" />}
-        />
+        <Route path="/" element={user ? <Navigate to="/admin" /> : <Navigate to="/admin/login" />} />
         <Route path="/admin/login" element={<Login onLogin={setUser} />} />
         <Route
           path="/admin/*"
           element={
-            user && user.role === "admin" ? (
+            user ? (
               <AdminPanel user={user} onLogout={() => auth.signOut().then(() => setUser(null))} />
             ) : (
               <Navigate to="/admin/login" />
@@ -1330,6 +964,6 @@ function App() {
       </Routes>
     </Router>
   );
-}//
+}
 
 export default App;
