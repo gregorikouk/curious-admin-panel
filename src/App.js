@@ -432,7 +432,7 @@ function Posts() {
           onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
           style={{ marginBottom: 22, flexShrink: 0 }}
         >
-          {sortDir === "desc" ? "↓ Νεότερα πρώτα" : "↑ Παλαιότερα πρώτα"}
+          {sortDir === "desc" ? "↓ NEWEST FIRST " : "↑ OLDEST FIRST"}
         </button>
       </div>
 
