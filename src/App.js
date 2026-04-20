@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   collection,
@@ -14,6 +14,8 @@ import {
   query,
   orderBy,
   Timestamp,
+  limit,
+  startAfter,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -312,41 +314,70 @@ function Reports() {
 }
 
 // ─── Posts ───────────────────────────────────────────────────────────────────
+const POSTS_PAGE = 20;
+
 function Posts() {
   const [posts, setPosts] = useState([]);
+  const [lastDoc, setLastDoc] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sortDir, setSortDir] = useState("desc"); // desc = newest first
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmDeleteComment, setConfirmDeleteComment] = useState(null);
   const [usernames, setUsernames] = useState({});
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentsByPost, setCommentsByPost] = useState({});
   const [searchText, setSearchText] = useState("");
+  const unsubRef = useRef(null);
+  const usernamesRef = useRef({});
+
+  const fetchUsernames = async (ids) => {
+    const unknown = ids.filter(id => !usernamesRef.current[id]);
+    await Promise.all(unknown.map(async id => {
+      const ud = await getDoc(doc(db, "users", id));
+      const name = ud.exists() ? ud.data().name || "Unknown" : "Unknown";
+      usernamesRef.current[id] = name;
+    }));
+    if (unknown.length > 0) setUsernames({ ...usernamesRef.current });
+  };
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "posts"), (snapshot) => {
-      const newPosts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setPosts([]);
+    setLastDoc(null);
+    setHasMore(true);
+    if (unsubRef.current) unsubRef.current();
+
+    const q = query(collection(db, "posts"), orderBy("timestamp", sortDir), limit(POSTS_PAGE));
+    const unsub = onSnapshot(q, async snap => {
+      const newPosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setPosts(newPosts);
-      const unique = [...new Set(newPosts.map(p => p.author))];
-      unique.forEach(async (id) => {
-        if (!usernames[id]) {
-          const ud = await getDoc(doc(db, "users", id));
-          setUsernames(prev => ({ ...prev, [id]: ud.exists() ? ud.data().name || "Unknown" : "Unknown" }));
-        }
-      });
+      setLastDoc(snap.docs[snap.docs.length - 1] || null);
+      setHasMore(snap.docs.length === POSTS_PAGE);
+      await fetchUsernames([...new Set(newPosts.map(p => p.author))]);
     });
+    unsubRef.current = unsub;
     return () => unsub();
-  }, [usernames]);
+  }, [sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMore = async () => {
+    if (!lastDoc || !hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const q = query(collection(db, "posts"), orderBy("timestamp", sortDir), startAfter(lastDoc), limit(POSTS_PAGE));
+    const snap = await getDocs(q);
+    const more = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    setPosts(prev => [...prev, ...more]);
+    setLastDoc(snap.docs[snap.docs.length - 1] || null);
+    setHasMore(snap.docs.length === POSTS_PAGE);
+    await fetchUsernames([...new Set(more.map(p => p.author))]);
+    setLoadingMore(false);
+  };
 
   const toggleExpand = async (postId) => {
     setExpandedPosts(prev => ({ ...prev, [postId]: !prev[postId] }));
     if (!expandedPosts[postId] && !commentsByPost[postId]) {
       const snap = await getDocs(collection(db, "posts", postId, "comments"));
       const comments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      for (const id of [...new Set(comments.map(c => c.author))]) {
-        if (!usernames[id]) {
-          const ud = await getDoc(doc(db, "users", id));
-          setUsernames(prev => ({ ...prev, [id]: ud.exists() ? ud.data().name || "Unknown" : "Unknown" }));
-        }
-      }
+      await fetchUsernames([...new Set(comments.map(c => c.author))]);
       setCommentsByPost(prev => ({ ...prev, [postId]: comments }));
     }
   };
@@ -394,7 +425,17 @@ function Posts() {
 
   return (
     <>
-      <PageHeader icon="📝" title="Posts" count={posts.length} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <PageHeader icon="📝" title="Posts" count={posts.length} />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
+          style={{ marginBottom: 22, flexShrink: 0 }}
+        >
+          {sortDir === "desc" ? "↓ Νεότερα πρώτα" : "↑ Παλαιότερα πρώτα"}
+        </button>
+      </div>
+
       <div className="search-wrap">
         <span className="search-icon">🔍</span>
         <input className="search-input" placeholder="Search posts or authors…"
@@ -402,49 +443,65 @@ function Posts() {
       </div>
 
       {filtered.length === 0 ? <EmptyState icon="📭" text="No posts found" /> : (
-        filtered.map(p => (
-          <div key={p.id} className="card">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <Avatar name={usernames[p.author]} />
-              <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{usernames[p.author] || "Unknown"}</span>
-              <span style={{ fontSize: 12, color: C.textMuted }}>{fmt(p.timestamp)}</span>
+        <>
+          {filtered.map(p => (
+            <div key={p.id} className="card">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <Avatar name={usernames[p.author]} />
+                <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{usernames[p.author] || "Unknown"}</span>
+                <span style={{ fontSize: 12, color: C.textMuted }}>{fmt(p.timestamp)}</span>
+              </div>
+              <p style={{ margin: "0 0 12px", fontSize: 14, color: C.textSecondary, lineHeight: 1.6 }}>{p.text}</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(p.id)}>Delete Post</button>
+                <button className="btn btn-ghost  btn-sm" onClick={() => toggleExpand(p.id)}>
+                  {expandedPosts[p.id] ? "▲ Hide Comments" : "▼ Show Comments"}
+                </button>
+              </div>
+
+              {expandedPosts[p.id] && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.cardBorder}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+                    Comments ({(commentsByPost[p.id] || []).length})
+                  </div>
+                  {(commentsByPost[p.id] || []).length > 0 ? (
+                    commentsByPost[p.id].map(c => (
+                      <div key={c.id} className="comment-item">
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 13, color: "#a5b4fc" }}>{usernames[c.author] || "Unknown"}</span>
+                            <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>{fmt(c.timestamp)}</span>
+                            <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSecondary }}>{c.text}</p>
+                          </div>
+                          <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }}
+                            onClick={() => setConfirmDeleteComment({ postId: p.id, commentId: c.id })}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>No comments</p>
+                  )}
+                </div>
+              )}
             </div>
-            <p style={{ margin: "0 0 12px", fontSize: 14, color: C.textSecondary, lineHeight: 1.6 }}>{p.text}</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(p.id)}>Delete Post</button>
-              <button className="btn btn-ghost  btn-sm" onClick={() => toggleExpand(p.id)}>
-                {expandedPosts[p.id] ? "▲ Hide Comments" : "▼ Show Comments"}
+          ))}
+
+          {/* Load More */}
+          {hasMore && !searchText && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more posts"}
               </button>
             </div>
-
-            {expandedPosts[p.id] && (
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.cardBorder}` }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-                  Comments ({(commentsByPost[p.id] || []).length})
-                </div>
-                {(commentsByPost[p.id] || []).length > 0 ? (
-                  commentsByPost[p.id].map(c => (
-                    <div key={c.id} className="comment-item">
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ fontWeight: 600, fontSize: 13, color: "#a5b4fc" }}>{usernames[c.author] || "Unknown"}</span>
-                          <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>{fmt(c.timestamp)}</span>
-                          <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textSecondary }}>{c.text}</p>
-                        </div>
-                        <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }}
-                          onClick={() => setConfirmDeleteComment({ postId: p.id, commentId: c.id })}>
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>No comments</p>
-                )}
-              </div>
-            )}
-          </div>
-        ))
+          )}
+          {!hasMore && posts.length > 0 && (
+            <p style={{ textAlign: "center", fontSize: 13, color: C.textMuted, marginTop: 12 }}>
+              All {posts.length} posts loaded
+            </p>
+          )}
+        </>
       )}
 
       {confirmDelete && (
@@ -468,6 +525,7 @@ function Users() {
   const [editingUser, setEditingUser] = useState(null);
   const [newUsername, setNewUsername] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [sortDir, setSortDir] = useState("desc"); // desc = newest first (by array order, unnamed last)
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), snapshot => {
@@ -494,9 +552,88 @@ function Users() {
     return (u.name || "").toLowerCase().includes(t) || (u.email || "").toLowerCase().includes(t);
   });
 
+  // Separate named vs unnamed
+  const named   = filtered.filter(u => u.name && u.name.trim() !== "");
+  const unnamed = filtered.filter(u => !u.name || u.name.trim() === "");
+
+  // Sort named users alphabetically or reverse
+  const sortedNamed = [...named].sort((a, b) =>
+    sortDir === "desc"
+      ? (a.name || "").localeCompare(b.name || "")
+      : (b.name || "").localeCompare(a.name || "")
+  );
+
+  const UserCard = ({ u }) => (
+    <div key={u.id} className="card">
+      {editingUser?.id === u.id ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <input className="form-input" value={newUsername}
+              onChange={e => setNewUsername(e.target.value)}
+              autoFocus style={{ flex: "1 1 180px", maxWidth: 240 }} />
+            <button className="btn btn-primary btn-sm" onClick={saveUsername}>Save</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditingUser(null)}>Cancel</button>
+          </div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+            <label className="check-label">
+              <input type="checkbox" checked={u.isAdmin || false}
+                onChange={async e => await updateDoc(doc(db, "users", u.id), { isAdmin: e.target.checked })} />
+              Admin
+            </label>
+            <label className="check-label">
+              <input type="checkbox" checked={u.isBusiness || false}
+                onChange={async e => await updateDoc(doc(db, "users", u.id), { isBusiness: e.target.checked })} />
+              Business
+            </label>
+          </div>
+        </div>
+      ) : (
+        <div className="user-card-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+            <Avatar name={u.name || "?"} banned={u.banStatus === "perm"} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: u.name ? C.textPrimary : C.textMuted, fontStyle: u.name ? "normal" : "italic" }}>
+                  {u.name || "Unnamed"}
+                </span>
+                {u.isAdmin    && <span className="badge badge-admin">Admin</span>}
+                {u.isBusiness && <span className="badge badge-business">Business</span>}
+                {u.banStatus === "perm" && <span className="badge badge-banned">Banned</span>}
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {u.email}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>Edit</button>
+            <button className="btn btn-sm"
+              style={u.banStatus === "perm"
+                ? { background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }
+                : { background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
+              onClick={() => togglePermBan(u.id, u.banStatus)}>
+              {u.banStatus === "perm" ? "Unban" : "Perm Ban"}
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.id)}>Delete</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <PageHeader icon="👥" title="Users" count={users.length} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <PageHeader icon="👥" title="Users" count={users.length} />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
+          style={{ marginBottom: 22, flexShrink: 0 }}
+        >
+          {sortDir === "desc" ? "↓ A → Z" : "↑ Z → A"}
+        </button>
+      </div>
+
       <div className="search-wrap">
         <span className="search-icon">🔍</span>
         <input className="search-input" placeholder="Search by name or email…"
@@ -504,64 +641,26 @@ function Users() {
       </div>
 
       {filtered.length === 0 ? <EmptyState icon="👤" text="No users found" /> : (
-        filtered.map(u => (
-          <div key={u.id} className="card">
-            {editingUser?.id === u.id ? (
-              /* Edit mode */
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <input className="form-input" value={newUsername}
-                    onChange={e => setNewUsername(e.target.value)}
-                    autoFocus style={{ flex: "1 1 180px", maxWidth: 240 }} />
-                  <button className="btn btn-primary btn-sm" onClick={saveUsername}>Save</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingUser(null)}>Cancel</button>
-                </div>
-                {/* Role checkboxes */}
-                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                  <label className="check-label">
-                    <input type="checkbox" checked={u.isAdmin || false}
-                      onChange={async e => await updateDoc(doc(db, "users", u.id), { isAdmin: e.target.checked })} />
-                    Admin
-                  </label>
-                  <label className="check-label">
-                    <input type="checkbox" checked={u.isBusiness || false}
-                      onChange={async e => await updateDoc(doc(db, "users", u.id), { isBusiness: e.target.checked })} />
-                    Business
-                  </label>
-                </div>
+        <>
+          {/* Named users */}
+          {sortedNamed.length > 0 && sortedNamed.map(u => <UserCard key={u.id} u={u} />)}
+
+          {/* Unnamed users section */}
+          {unnamed.length > 0 && (
+            <>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                margin: "24px 0 12px",
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                  Unnamed ({unnamed.length})
+                </span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
               </div>
-            ) : (
-              /* View mode */
-              <div className="user-card-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                  <Avatar name={u.name} banned={u.banStatus === "perm"} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{u.name || "Unnamed"}</span>
-                      {u.isAdmin    && <span className="badge badge-admin">Admin</span>}
-                      {u.isBusiness && <span className="badge badge-business">Business</span>}
-                      {u.banStatus === "perm" && <span className="badge badge-banned">Banned</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {u.email}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>Edit</button>
-                  <button className="btn btn-sm"
-                    style={u.banStatus === "perm"
-                      ? { background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }
-                      : { background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
-                    onClick={() => togglePermBan(u.id, u.banStatus)}>
-                    {u.banStatus === "perm" ? "Unban" : "Perm Ban"}
-                  </button>
-                  <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.id)}>Delete</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))
+              {unnamed.map(u => <UserCard key={u.id} u={u} />)}
+            </>
+          )}
+        </>
       )}
     </>
   );
@@ -644,8 +743,9 @@ function Categories() {
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 function Events() {
-  const emptyForm = { title: "", datetime: "", location: "", info: "", cost: "" };
+  const emptyForm = { title: "", datetime: "", location: "", mapsUrl: "", info: "", cost: "" };
   const [events, setEvents] = useState([]);
+  const [sortDir, setSortDir] = useState("desc");
   const [form, setForm] = useState(emptyForm);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -656,12 +756,12 @@ function Events() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "events"), orderBy("createdAt", sortDir));
     const unsub = onSnapshot(q, snap => {
       setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
-  }, []);
+  }, [sortDir]);
 
   const resetForm = () => {
     setForm(emptyForm); setImageFile(null); setImagePreview(null);
@@ -683,7 +783,7 @@ function Events() {
       const pad = n => String(n).padStart(2, "0");
       dt = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
-    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "" });
+    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", mapsUrl: ev.mapsUrl || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "" });
     setImageFile(null); setImagePreview(null); setExistingImageUrl(ev.imageUrl || null); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -706,6 +806,7 @@ function Events() {
         title: form.title.trim(),
         datetime: Timestamp.fromDate(new Date(form.datetime)),
         location: form.location.trim(),
+        mapsUrl: form.mapsUrl.trim() || null,
         info: form.info.trim(),
         cost: form.cost.trim() === "" ? null : Number(form.cost),
         imageUrl: imageUrl || null,
@@ -765,6 +866,12 @@ function Events() {
               placeholder="e.g. 15 Ermou St, Athens" required />
           </FormField>
 
+          <FormField label="Google Maps Link (προαιρετικό)">
+            <input className="form-input" type="url" value={form.mapsUrl}
+              onChange={e => setForm({ ...form, mapsUrl: e.target.value })}
+              placeholder="https://maps.google.com/..." />
+          </FormField>
+
           <FormField label="Description *">
             <textarea className="form-input" value={form.info}
               onChange={e => setForm({ ...form, info: e.target.value })}
@@ -804,11 +911,16 @@ function Events() {
         </form>
       </div>
 
-      {/* List */}
-      <h3 style={{ fontSize: 15, fontWeight: 700, color: C.textPrimary, margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-        All Events
-        <span style={{ background: C.accentBg, color: "#a5b4fc", padding: "2px 8px", borderRadius: 99, fontSize: 12 }}>{events.length}</span>
-      </h3>
+      {/* List header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.textPrimary, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          All Events
+          <span style={{ background: C.accentBg, color: "#a5b4fc", padding: "2px 8px", borderRadius: 99, fontSize: 12 }}>{events.length}</span>
+        </h3>
+        <button className="btn btn-ghost btn-sm" onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}>
+          {sortDir === "desc" ? "↓ Νεότερα πρώτα" : "↑ Παλαιότερα πρώτα"}
+        </button>
+      </div>
 
       {events.length === 0 ? <EmptyState icon="📅" text="No events yet — create one above" /> : (
         events.map(ev => (
@@ -819,7 +931,12 @@ function Events() {
                 <div style={{ fontWeight: 700, fontSize: 15, color: C.textPrimary, marginBottom: 6 }}>{ev.title}</div>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
                   <span style={{ fontSize: 13, color: C.textSecondary }}>📅 {formatDT(ev.datetime)}</span>
-                  <span style={{ fontSize: 13, color: C.textSecondary }}>📍 {ev.location}</span>
+                  <span style={{ fontSize: 13, color: C.textSecondary }}>
+                    📍{" "}
+                    {ev.mapsUrl
+                      ? <a href={ev.mapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#a5b4fc", textDecoration: "none" }}>{ev.location}</a>
+                      : ev.location}
+                  </span>
                   <span className={ev.cost == null || ev.cost === "" ? "badge badge-free" : "badge badge-admin"}>
                     {ev.cost == null || ev.cost === "" ? "Free" : `€${ev.cost}`}
                   </span>
