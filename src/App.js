@@ -16,6 +16,7 @@ import {
   Timestamp,
   limit,
   startAfter,
+  where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -192,6 +193,8 @@ function AdminPanel({ user, onLogout }) {
             <SidebarLink to="/admin/notifications" icon="📢" onClick={closeSidebar}>Notifications</SidebarLink>
           </>}
           <SidebarLink to="/admin/events" icon="📅" onClick={closeSidebar}>Events</SidebarLink>
+          {isAdmin && <SidebarLink to="/admin/waiting-list" icon="⏳" onClick={closeSidebar}>Waiting List</SidebarLink>}
+          {isAdmin && <SidebarLink to="/admin/usernames"    icon="🏷️" onClick={closeSidebar}>Usernames</SidebarLink>}
         </nav>
 
         {/* Role badge */}
@@ -233,8 +236,10 @@ function AdminPanel({ user, onLogout }) {
             <Route path="categories"    element={<Categories />} />
             <Route path="reports"       element={<Reports />} />
             <Route path="notifications" element={<Notifications />} />
+            <Route path="waiting-list"  element={<WaitingList />} />
+            <Route path="usernames"     element={<Usernames />} />
           </>}
-          <Route path="events" element={<Events />} />
+          <Route path="events" element={<Events user={user} />} />
           <Route path="*" element={<Navigate to={isAdmin ? "/admin/users" : "/admin/events"} replace />} />
         </Routes>
       </main>
@@ -527,14 +532,22 @@ function Posts() {
 // ─── Users ───────────────────────────────────────────────────────────────────
 function Users() {
   const [users, setUsers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
   const [newUsername, setNewUsername] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [sortDir, setSortDir] = useState("desc"); // desc = newest first (by array order, unnamed last)
+  const [sortDir, setSortDir] = useState("desc");
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), snapshot => {
       setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "categories"), snap => {
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
@@ -591,6 +604,24 @@ function Users() {
               Business
             </label>
           </div>
+          {u.isBusiness && (
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textSecondary, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Managed Category
+              </label>
+              <select
+                className="form-input"
+                style={{ maxWidth: 260 }}
+                value={u.managedCategoryId || ""}
+                onChange={async e => await updateDoc(doc(db, "users", u.id), { managedCategoryId: e.target.value || null })}
+              >
+                <option value="">— None —</option>
+                {categories.filter(c => c.isBusinessCategory).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       ) : (
         <div className="user-card-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -608,6 +639,11 @@ function Users() {
               <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {u.email}
               </div>
+              {u.isBusiness && u.managedCategoryId && (
+                <div style={{ fontSize: 11, color: "#a5b4fc", marginTop: 2 }}>
+                  📂 {categories.find(c => c.id === u.managedCategoryId)?.name || "Unknown category"}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
@@ -706,6 +742,10 @@ function Categories() {
     await updateDoc(doc(db, "categories", id), { pinned: !current });
   };
 
+  const toggleBusiness = async (id, current) => {
+    await updateDoc(doc(db, "categories", id), { isBusinessCategory: !current });
+  };
+
   return (
     <>
       <PageHeader icon="🏷️" title="Categories" count={categories.length} />
@@ -731,11 +771,17 @@ function Categories() {
               <span style={{ fontSize: 15 }}>🏷️</span>
               <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{c.name}</span>
               {c.pinned && <span className="badge badge-pinned">Pinned</span>}
+              {c.isBusinessCategory && <span className="badge badge-business">Business</span>}
             </div>
             <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
               <button className="btn btn-ghost btn-sm" onClick={() => togglePinned(c.id, c.pinned)}>
                 {c.pinned ? "Unpin" : "📌 Pin"}
               </button>
+              {editingCategory?.id === c.id && (
+                <button className="btn btn-ghost btn-sm" onClick={() => toggleBusiness(c.id, c.isBusinessCategory)}>
+                  {c.isBusinessCategory ? "Unmark Business" : "🏢 Business"}
+                </button>
+              )}
               <button className="btn btn-ghost btn-sm" onClick={() => startEdit(c)}>Edit</button>
               <button className="btn btn-danger btn-sm" onClick={() => deleteCategory(c.id)}>Delete</button>
             </div>
@@ -747,9 +793,11 @@ function Categories() {
 }
 
 // ─── Events ──────────────────────────────────────────────────────────────────
-function Events() {
-  const emptyForm = { title: "", datetime: "", location: "", mapsUrl: "", info: "", cost: "" };
+function Events({ user }) {
+  const isAdmin = user?.role === "admin";
+  const emptyForm = { title: "", datetime: "", location: "", mapsUrl: "", info: "", cost: "", categoryId: "" };
   const [events, setEvents] = useState([]);
+  const [businessCategories, setBusinessCategories] = useState([]);
   const [sortDir, setSortDir] = useState("desc");
   const [form, setForm] = useState(emptyForm);
   const [imageFile, setImageFile] = useState(null);
@@ -761,12 +809,23 @@ function Events() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db, "events"), orderBy("createdAt", sortDir));
+    const unsub = onSnapshot(
+      query(collection(db, "categories"), where("isBusinessCategory", "==", true)),
+      snap => setBusinessCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const base = collection(db, "events");
+    const q = isAdmin
+      ? query(base, orderBy("createdAt", sortDir))
+      : query(base, where("createdBy", "==", user.uid), orderBy("createdAt", sortDir));
     const unsub = onSnapshot(q, snap => {
       setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
-  }, [sortDir]);
+  }, [sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resetForm = () => {
     setForm(emptyForm); setImageFile(null); setImagePreview(null);
@@ -788,7 +847,7 @@ function Events() {
       const pad = n => String(n).padStart(2, "0");
       dt = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
-    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", mapsUrl: ev.mapsUrl || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "" });
+    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", mapsUrl: ev.mapsUrl || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "", categoryId: ev.categoryId || "" });
     setImageFile(null); setImagePreview(null); setExistingImageUrl(ev.imageUrl || null); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -815,12 +874,13 @@ function Events() {
         info: form.info.trim(),
         cost: form.cost.trim() === "" ? null : Number(form.cost),
         imageUrl: imageUrl || null,
+        categoryId: form.categoryId || null,
       };
       if (imagePublicId) payload.imagePublicId = imagePublicId;
       if (editingId) {
         await updateDoc(doc(db, "events", editingId), { ...payload, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, "events"), { ...payload, createdAt: serverTimestamp() });
+        await addDoc(collection(db, "events"), { ...payload, createdBy: user.uid, createdAt: serverTimestamp() });
       }
       resetForm();
     } catch (err) { console.error(err); setError(err.message || "Failed to save event."); }
@@ -882,6 +942,18 @@ function Events() {
               onChange={e => setForm({ ...form, info: e.target.value })}
               placeholder="Event description…" required style={{ minHeight: 90, resize: "vertical" }} />
           </FormField>
+
+          {businessCategories.length > 0 && (
+            <FormField label="Category (προαιρετικό)">
+              <select className="form-input" value={form.categoryId}
+                onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+                <option value="">— None —</option>
+                {businessCategories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </FormField>
+          )}
 
           <FormField label={editingId ? "Image (blank = keep existing)" : "Image *"}>
             <label htmlFor="ev-img" style={{
@@ -982,14 +1054,24 @@ const NOTIF_TYPES = [
 ];
 
 const DEEP_LINK_ACTIONS = [
-  { value: "",                 label: "— Κανένα —" },
-  { value: "create_confession",label: "✍️ Create Confession" },
-  { value: "daily_question",   label: "❓ Daily Question" },
-  { value: "curious_plus",     label: "⭐ Curious+" },
-  { value: "homepage",         label: "🏠 Homepage" },
+  { value: "",                  label: "— Κανένα —" },
+  { value: "create_confession", label: "✍️ Create Confession" },
+  { value: "daily_question",    label: "❓ Daily Question" },
+  { value: "curious_plus",      label: "⭐ Curious+" },
+  { value: "homepage",          label: "🏠 Homepage" },
 ];
 
+// Hardcoded test user (quick-send target)
+const TEST_USER_ID = "v9U9FEnDgFacBJSGKTX5hl0R65g1";
+
 const NOTIF_TEMPLATES = [
+  {
+    label: "🧪 Send to Greg (test)",
+    color: "#94a3b8",
+    colorBg: "rgba(148,163,184,0.1)",
+    toUserId: TEST_USER_ID,
+    form: { toUserId: TEST_USER_ID, title: "🧪 Test Notification", body: "Αυτό είναι ένα test notification.", type: "announcement", postId: "", action: "" },
+  },
   {
     label: "📢 Ανακοίνωση",
     color: "#6366f1",
@@ -1057,6 +1139,22 @@ function Notifications() {
     return data;
   };
 
+  // Helper: send a notification with an arbitrary payload
+  const sendPayload = async (payload) => {
+    setSending(true); setResult(null);
+    try {
+      const res = await fetch(`${VERCEL_URL}/send-custom-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      setResult({ ok: res.ok, message: res.ok ? (json.message || "✅ Στάλθηκε!") : (json.error || "Κάτι πήγε λάθος.") });
+    } catch (e) {
+      setResult({ ok: false, message: e.message });
+    } finally { setSending(false); }
+  };
+
   // Live JSON preview
   const jsonPreview = JSON.stringify({
     toUserId: form.toUserId || "all",
@@ -1070,31 +1168,13 @@ function Notifications() {
       setResult({ ok: false, message: "Title και Body είναι υποχρεωτικά." });
       return;
     }
-    setSending(true);
-    setResult(null);
-    try {
-      const res = await fetch(`${VERCEL_URL}/send-custom-notification`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          toUserId: form.toUserId || "all",
-          title:    form.title.trim(),
-          body:     form.body.trim(),
-          data:     buildData(),
-        }),
-      });
-      const json = await res.json();
-      if (res.ok) {
-        setResult({ ok: true, message: json.message || "✅ Στάλθηκε!" });
-        setForm(f => ({ ...f, title: "", body: "", postId: "", action: "", type: "" }));
-      } else {
-        setResult({ ok: false, message: json.error || "Κάτι πήγε λάθος." });
-      }
-    } catch (e) {
-      setResult({ ok: false, message: e.message });
-    } finally {
-      setSending(false);
-    }
+    await sendPayload({
+      toUserId: form.toUserId || "all",
+      title:    form.title.trim(),
+      body:     form.body.trim(),
+      data:     buildData(),
+    });
+    if (true) setForm(f => ({ ...f, title: "", body: "", postId: "", action: "", type: "" }));
   };
 
   const filteredUsers = users.filter(u =>
@@ -1250,7 +1330,7 @@ function Notifications() {
                   borderRadius: 10, border: `1px solid ${tpl.color}30`,
                   background: tpl.colorBg, overflow: "hidden",
                 }}>
-                  {/* Header row — load or send */}
+                  {/* Header row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px" }}>
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.textPrimary }}>{tpl.label}</span>
                     <button
@@ -1264,30 +1344,15 @@ function Notifications() {
                       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                     >Φόρτωση</button>
                     <button
-                      onClick={async () => {
-                        if (sending) return;
-                        setSending(true); setResult(null);
-                        try {
-                          const payload = {
-                            toUserId: tpl.form.toUserId || "all",
-                            title: tpl.form.title,
-                            body:  tpl.form.body,
-                            data:  Object.fromEntries(
-                              [["type", tpl.form.type], ["postId", tpl.form.postId], ["action", tpl.form.action]]
-                                .filter(([, v]) => v)
-                            ),
-                          };
-                          const res = await fetch(`${VERCEL_URL}/send-custom-notification`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload),
-                          });
-                          const json = await res.json();
-                          setResult({ ok: res.ok, message: res.ok ? (json.message || "✅ Στάλθηκε!") : (json.error || "Κάτι πήγε λάθος.") });
-                        } catch (e) {
-                          setResult({ ok: false, message: e.message });
-                        } finally { setSending(false); }
-                      }}
+                      onClick={() => sendPayload({
+                        toUserId: tpl.form.toUserId || "all",
+                        title: tpl.form.title,
+                        body:  tpl.form.body,
+                        data:  Object.fromEntries(
+                          [["type", tpl.form.type], ["postId", tpl.form.postId], ["action", tpl.form.action]]
+                            .filter(([, v]) => v)
+                        ),
+                      })}
                       disabled={sending}
                       style={{
                         padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: sending ? "not-allowed" : "pointer",
@@ -1303,11 +1368,18 @@ function Notifications() {
                       <br />
                       <span style={{ color: C.textMuted }}>{tpl.form.body}</span>
                     </div>
-                    {tpl.form.action && (
-                      <span style={{ display: "inline-block", marginTop: 6, fontSize: 10, padding: "2px 7px", borderRadius: 99, background: `${tpl.color}20`, color: tpl.color, fontWeight: 600 }}>
-                        action: {tpl.form.action}
-                      </span>
-                    )}
+                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                      {tpl.form.action && (
+                        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: `${tpl.color}20`, color: tpl.color, fontWeight: 600 }}>
+                          action: {tpl.form.action}
+                        </span>
+                      )}
+                      {tpl.form.toUserId !== "all" && (
+                        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: "rgba(148,163,184,0.15)", color: C.textMuted, fontWeight: 600 }}>
+                          👤 test user
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1400,6 +1472,282 @@ function EmptyState({ icon, text }) {
       <div className="empty-state-icon">{icon}</div>
       <div className="empty-state-text">{text}</div>
     </div>
+  );
+}
+
+// ─── Waiting List ────────────────────────────────────────────────────────────
+function WaitingList() {
+  const [entries, setEntries] = useState([]);
+  const [sortDir, setSortDir] = useState("desc");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, "waitingList"), orderBy("timestamp", sortDir));
+    const unsub = onSnapshot(q, snap => {
+      setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [sortDir]);
+
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, "waitingList", id));
+    setConfirmDeleteId(null);
+  };
+
+  const handleDeleteAll = async () => {
+    const batch = writeBatch(db);
+    entries.forEach(e => batch.delete(doc(db, "waitingList", e.id)));
+    await batch.commit();
+    setConfirmDeleteAll(false);
+  };
+
+  const handleExportCSV = () => {
+    const csv = ["email", ...entries.map(e => e.email || "")].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "waiting-list-emails.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fmtDate = (ts) => {
+    if (!ts) return "—";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString();
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
+        <PageHeader icon="⏳" title="Waiting List" count={entries.length} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}>
+            {sortDir === "desc" ? "↓ Newest" : "↑ Oldest"}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={handleExportCSV} disabled={entries.length === 0}>
+            ↓ Export CSV
+          </button>
+          {entries.length > 0 && (
+            <button className="btn btn-danger btn-sm" onClick={() => setConfirmDeleteAll(true)}>
+              Delete All
+            </button>
+          )}
+        </div>
+      </div>
+
+      {entries.length === 0 ? (
+        <EmptyState icon="📭" text="No entries in the waiting list yet." />
+      ) : (
+        entries.map(e => (
+          <div key={e.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {e.email || "—"}
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
+                {fmtDate(e.timestamp)}
+              </div>
+            </div>
+            <button className="btn btn-danger btn-sm" style={{ flexShrink: 0 }} onClick={() => setConfirmDeleteId(e.id)}>
+              Delete
+            </button>
+          </div>
+        ))
+      )}
+
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Delete Entry"
+          message="Are you sure you want to remove this entry from the waiting list?"
+          onConfirm={() => handleDelete(confirmDeleteId)}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+
+      {confirmDeleteAll && (
+        <ConfirmModal
+          title="Delete All Entries"
+          message={`Are you sure you want to delete all ${entries.length} entries? This cannot be undone.`}
+          onConfirm={handleDeleteAll}
+          onCancel={() => setConfirmDeleteAll(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── Usernames ───────────────────────────────────────────────────────────────
+const USERNAMES_PAGE = 20;
+
+function UsernameCard({ item, onDelete }) {
+  return (
+    <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, fontFamily: "monospace" }}>
+          @{item.username}
+        </span>
+        {!item.assigned
+          ? <span className="badge badge-free">Available</span>
+          : <span className="badge badge-business">Assigned</span>}
+      </div>
+      <button className="btn btn-danger btn-sm" onClick={() => onDelete(item.id)}>Delete</button>
+    </div>
+  );
+}
+
+function Usernames() {
+  const [items, setItems] = useState([]);
+  const [lastDoc, setLastDoc] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [duplicateError, setDuplicateError] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const unsubRef = useRef(null);
+
+  useEffect(() => {
+    if (unsubRef.current) unsubRef.current();
+    const q = query(
+      collection(db, "usernames"),
+      orderBy("assigned", "asc"),
+      limit(USERNAMES_PAGE)
+    );
+    const unsub = onSnapshot(q, snap => {
+      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLastDoc(snap.docs[snap.docs.length - 1] || null);
+      setHasMore(snap.docs.length === USERNAMES_PAGE);
+    });
+    unsubRef.current = unsub;
+    return () => unsub();
+  }, []);
+
+  const loadMore = async () => {
+    if (!lastDoc || !hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const q = query(
+      collection(db, "usernames"),
+      orderBy("assigned", "asc"),
+      startAfter(lastDoc),
+      limit(USERNAMES_PAGE)
+    );
+    const snap = await getDocs(q);
+    const more = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    setItems(prev => [...prev, ...more]);
+    setLastDoc(snap.docs[snap.docs.length - 1] || null);
+    setHasMore(snap.docs.length === USERNAMES_PAGE);
+    setLoadingMore(false);
+  };
+
+  const createUsername = async () => {
+    const trimmed = newUsername.trim();
+    if (!trimmed) return;
+    setCreating(true);
+    try {
+      const existing = await getDocs(query(collection(db, "usernames"), where("username", "==", trimmed)));
+      if (!existing.empty) {
+        setDuplicateError(`"${trimmed}" already exists.`);
+        return;
+      }
+      await addDoc(collection(db, "usernames"), {
+        username: trimmed,
+        assigned: false,
+      });
+      setNewUsername("");
+      setDuplicateError("");
+    } catch (err) { console.error(err); }
+    finally { setCreating(false); }
+  };
+
+  const deleteUsername = async (id) => {
+    await deleteDoc(doc(db, "usernames", id));
+  };
+
+  const filtered = searchText
+    ? items.filter(i => (i.username || "").toLowerCase().includes(searchText.toLowerCase()))
+    : items;
+
+  const unassigned = filtered.filter(i => !i.assigned);
+  const assigned   = filtered.filter(i => i.assigned);
+
+  return (
+    <>
+      <PageHeader icon="🏷️" title="Usernames" count={items.length} />
+
+      {/* Create */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+        <input
+          className="form-input"
+          style={{ flex: 1 }}
+          placeholder="New username…"
+          value={newUsername}
+          onChange={e => { setNewUsername(e.target.value); setDuplicateError(""); }}
+          onKeyDown={e => e.key === "Enter" && createUsername()}
+        />
+        <button className="btn btn-primary" onClick={createUsername} disabled={creating || !newUsername.trim()}>
+          {creating ? "Creating…" : "+ Create"}
+        </button>
+      </div>
+      {duplicateError && (
+        <div style={{ marginTop: -16, marginBottom: 16, padding: "8px 12px", background: C.dangerBg, border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, color: "#f87171", fontSize: 13 }}>
+          {duplicateError}
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="search-wrap">
+        <span className="search-icon">🔍</span>
+        <input className="search-input" placeholder="Search usernames…"
+          value={searchText} onChange={e => setSearchText(e.target.value)} />
+      </div>
+
+      {filtered.length === 0 ? <EmptyState icon="🏷️" text="No usernames found" /> : (
+        <>
+          {/* Unassigned at top */}
+          {unassigned.length > 0 && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                  Available ({unassigned.length})
+                </span>
+                <div style={{ flex: 1, height: 1, background: "rgba(99,102,241,0.2)" }} />
+              </div>
+              {unassigned.map(item => <UsernameCard key={item.id} item={item} onDelete={deleteUsername} />)}
+            </>
+          )}
+
+          {/* Assigned below */}
+          {assigned.length > 0 && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "24px 0 12px" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                  Assigned ({assigned.length})
+                </span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
+              </div>
+              {assigned.map(item => <UsernameCard key={item.id} item={item} onDelete={deleteUsername} />)}
+            </>
+          )}
+
+          {/* Pagination */}
+          {hasMore && !searchText && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+          {!hasMore && items.length > 0 && (
+            <p style={{ textAlign: "center", fontSize: 13, color: C.textMuted, marginTop: 12 }}>
+              All {items.length} usernames loaded
+            </p>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
