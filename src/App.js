@@ -712,6 +712,9 @@ function Categories() {
   const [categories, setCategories] = useState([]);
   const [inputVal, setInputVal] = useState("");
   const [editingCategory, setEditingCategory] = useState(null);
+  // { id, name, postCount, posts[] } — set when user clicks Delete, triggers confirm modal
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [loadingDelete, setLoadingDelete] = useState(false); // while fetching post count
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "categories"), snap => {
@@ -726,7 +729,56 @@ function Categories() {
     setInputVal("");
   };
 
-  const deleteCategory = async (id) => { await deleteDoc(doc(db, "categories", id)); };
+  // Step 1: fetch posts, show confirm modal
+  const requestDeleteCategory = async (cat) => {
+    setLoadingDelete(true);
+    try {
+      const snap = await getDocs(query(collection(db, "posts"), where("categoryId", "==", cat.id)));
+      const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPendingDelete({ id: cat.id, name: cat.name, posts });
+    } finally {
+      setLoadingDelete(false);
+    }
+  };
+
+  // Step 2: confirmed — batch-delete posts + update stats + delete category
+  const executeDeleteCategory = async () => {
+    const { id, posts } = pendingDelete;
+    setPendingDelete(null);
+
+    const BATCH_SIZE = 400;
+
+    if (posts.length > 0) {
+      // Aggregate likes-received delta per author (no extra reads needed)
+      const authorLikes = {};
+      for (const post of posts) {
+        if (!post.author) continue;
+        const fromOthers = (post.likes || []).filter(uid => uid !== post.author).length;
+        if (fromOthers > 0) {
+          authorLikes[post.author] = (authorLikes[post.author] || 0) - fromOthers;
+        }
+      }
+
+      // Delete posts in batches
+      for (let i = 0; i < posts.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        posts.slice(i, i + BATCH_SIZE).forEach(p => batch.delete(doc(db, "posts", p.id)));
+        await batch.commit();
+      }
+
+      // Update likesReceived per author
+      const likeEntries = Object.entries(authorLikes);
+      for (let i = 0; i < likeEntries.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        likeEntries.slice(i, i + BATCH_SIZE).forEach(([uid, delta]) => {
+          batch.update(doc(db, "users", uid), { likesReceived: increment(delta) });
+        });
+        await batch.commit();
+      }
+    }
+
+    await deleteDoc(doc(db, "categories", id));
+  };
 
   const startEdit = (cat) => { setEditingCategory(cat); setInputVal(cat.name); };
 
@@ -783,10 +835,65 @@ function Categories() {
                 </button>
               )}
               <button className="btn btn-ghost btn-sm" onClick={() => startEdit(c)}>Edit</button>
-              <button className="btn btn-danger btn-sm" onClick={() => deleteCategory(c.id)}>Delete</button>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={() => requestDeleteCategory(c)}
+                disabled={loadingDelete}
+              >
+                {loadingDelete ? "…" : "Delete"}
+              </button>
             </div>
           </div>
         ))
+      )}
+
+      {/* Confirm delete category + posts */}
+      {pendingDelete && (
+        <div style={{
+          position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.75)",
+          backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 9999, padding: 16,
+        }}>
+          <div style={{
+            background: "#1e1e32", border: `1px solid ${C.cardBorder}`, borderRadius: 16,
+            padding: "28px 24px 22px", width: "100%", maxWidth: 400,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+          }}>
+            <div style={{ fontSize: 28, marginBottom: 12, textAlign: "center" }}>🗑️</div>
+            <h3 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 700, color: C.textPrimary, textAlign: "center" }}>
+              Διαγραφή κατηγορίας
+            </h3>
+
+            <div style={{ margin: "0 0 18px", padding: "12px 14px", background: C.inputBg, borderRadius: 10, border: `1px solid ${C.inputBorder}` }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textPrimary, marginBottom: 6 }}>
+                🏷️ {pendingDelete.name}
+              </div>
+              {pendingDelete.posts.length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textSecondary }}>
+                  Δεν υπάρχουν posts σε αυτή την κατηγορία.
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: "#f87171" }}>
+                  ⚠️ Θα διαγραφούν επίσης{" "}
+                  <strong style={{ color: "#fca5a5" }}>{pendingDelete.posts.length} posts</strong>{" "}
+                  που ανήκουν σε αυτή την κατηγορία.
+                </div>
+              )}
+            </div>
+
+            <p style={{ margin: "0 0 22px", fontSize: 13, color: C.textMuted, lineHeight: 1.5, textAlign: "center" }}>
+              Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPendingDelete(null)}>
+                Ακύρωση
+              </button>
+              <button className="btn btn-danger-solid" style={{ flex: 1 }} onClick={executeDeleteCategory}>
+                {pendingDelete.posts.length > 0 ? `Διαγραφή (${pendingDelete.posts.length} posts)` : "Διαγραφή"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
