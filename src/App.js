@@ -28,6 +28,9 @@ import "./App.css";
 
 setPersistence(auth, browserLocalPersistence);
 
+// ─── Config ────────────────────────────────────────────────────────────────
+const VERCEL_URL = "https://notification-manager-ruby.vercel.app";
+
 // ─── Design Tokens ─────────────────────────────────────────────────────────
 const C = {
   bg: "#0c0c14",
@@ -182,10 +185,11 @@ function AdminPanel({ user, onLogout }) {
         {/* Nav */}
         <nav style={{ padding: "0 8px", flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
           {isAdmin && <>
-            <SidebarLink to="/admin/users"      icon="👥" onClick={closeSidebar}>Users</SidebarLink>
-            <SidebarLink to="/admin/posts"      icon="📝" onClick={closeSidebar}>Posts</SidebarLink>
-            <SidebarLink to="/admin/categories" icon="🏷️" onClick={closeSidebar}>Categories</SidebarLink>
-            <SidebarLink to="/admin/reports"    icon="🚩" onClick={closeSidebar}>Reports</SidebarLink>
+            <SidebarLink to="/admin/users"         icon="👥" onClick={closeSidebar}>Users</SidebarLink>
+            <SidebarLink to="/admin/posts"         icon="📝" onClick={closeSidebar}>Posts</SidebarLink>
+            <SidebarLink to="/admin/categories"    icon="🏷️" onClick={closeSidebar}>Categories</SidebarLink>
+            <SidebarLink to="/admin/reports"       icon="🚩" onClick={closeSidebar}>Reports</SidebarLink>
+            <SidebarLink to="/admin/notifications" icon="📢" onClick={closeSidebar}>Notifications</SidebarLink>
           </>}
           <SidebarLink to="/admin/events" icon="📅" onClick={closeSidebar}>Events</SidebarLink>
         </nav>
@@ -224,10 +228,11 @@ function AdminPanel({ user, onLogout }) {
 
         <Routes>
           {isAdmin && <>
-            <Route path="users"      element={<Users />} />
-            <Route path="posts"      element={<Posts />} />
-            <Route path="categories" element={<Categories />} />
-            <Route path="reports"    element={<Reports />} />
+            <Route path="users"         element={<Users />} />
+            <Route path="posts"         element={<Posts />} />
+            <Route path="categories"    element={<Categories />} />
+            <Route path="reports"       element={<Reports />} />
+            <Route path="notifications" element={<Notifications />} />
           </>}
           <Route path="events" element={<Events />} />
           <Route path="*" element={<Navigate to={isAdmin ? "/admin/users" : "/admin/events"} replace />} />
@@ -957,6 +962,381 @@ function Events() {
           message="Are you sure you want to permanently delete this event?"
           onConfirm={() => deleteEvent(confirmDeleteId)} onCancel={() => setConfirmDeleteId(null)} />
       )}
+    </>
+  );
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+const NOTIF_TYPES = [
+  { value: "",                 label: "— Χωρίς τύπο —" },
+  { value: "announcement",    label: "📢 Announcement" },
+  { value: "like",            label: "👍 Like" },
+  { value: "comment",         label: "💬 Comment" },
+  { value: "comment_reply",   label: "💬 Comment Reply" },
+  { value: "like_comment",    label: "❤️ Like Comment" },
+  { value: "mention",         label: "📣 Mention in Comment" },
+  { value: "mention_in_post", label: "📣 Mention in Post" },
+  { value: "voteRG",          label: "🟢🔴 Red/Green Flag Vote" },
+  { value: "voteCONF",        label: "😇😈 Confession Vote" },
+  { value: "scape",           label: "⭐ Scape (selected post)" },
+];
+
+const DEEP_LINK_ACTIONS = [
+  { value: "",                 label: "— Κανένα —" },
+  { value: "create_confession",label: "✍️ Create Confession" },
+  { value: "daily_question",   label: "❓ Daily Question" },
+  { value: "curious_plus",     label: "⭐ Curious+" },
+  { value: "homepage",         label: "🏠 Homepage" },
+];
+
+const NOTIF_TEMPLATES = [
+  {
+    label: "📢 Ανακοίνωση",
+    color: "#6366f1",
+    colorBg: "rgba(99,102,241,0.12)",
+    form: { toUserId: "all", title: "📢 Νέα Ανακοίνωση!", body: "Έχουμε κάτι νέο για εσένα. Άνοιξε το app για να δεις τι γίνεται!", type: "announcement", postId: "", action: "" },
+  },
+  {
+    label: "❓ Daily Question",
+    color: "#f59e0b",
+    colorBg: "rgba(245,158,11,0.12)",
+    form: { toUserId: "all", title: "❓ Ερώτηση της Ημέρας!", body: "Η ερώτηση της ημέρας σε περιμένει. Μπες και απάντησε τώρα!", type: "announcement", postId: "", action: "daily_question" },
+  },
+  {
+    label: "🔥 Streak Reminder",
+    color: "#ef4444",
+    colorBg: "rgba(239,68,68,0.12)",
+    form: { toUserId: "all", title: "🔥 Το streak σου κινδυνεύει!", body: "Δεν έχεις ποστάρει σήμερα. Μη το αφήσεις να σπάσει!", type: "announcement", postId: "", action: "create_confession" },
+  },
+  {
+    label: "⭐ Curious+",
+    color: "#a78bfa",
+    colorBg: "rgba(167,139,250,0.12)",
+    form: { toUserId: "all", title: "⭐ Ανακάλυψε το Curious+", body: "Ξεκλείδωσε premium δυνατότητες και απόλαυσε πλήρη πρόσβαση!", type: "announcement", postId: "", action: "curious_plus" },
+  },
+  {
+    label: "🏠 Open Homepage",
+    color: "#34d399",
+    colorBg: "rgba(52,211,153,0.12)",
+    form: { toUserId: "all", title: "👋 Γεια σου!", body: "Δες τι καινούριο υπάρχει στο CuriousApp σήμερα!", type: "announcement", postId: "", action: "homepage" },
+  },
+];
+
+function Notifications() {
+  const [users, setUsers] = useState([]);
+  const [form, setForm] = useState({
+    toUserId: "all",
+    title: "",
+    body: "",
+    type: "",
+    postId: "",
+    action: "",
+  });
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null); // { ok, message }
+  const [userSearch, setUserSearch] = useState("");
+
+  useEffect(() => {
+    getDocs(collection(db, "users")).then(snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, name: d.data().name || "", email: d.data().email || "" }))
+        .filter(u => u.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setUsers(list);
+    });
+  }, []);
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  // Build the data payload that goes in the notification
+  const buildData = () => {
+    const data = {};
+    if (form.type)   data.type   = form.type;
+    if (form.postId) data.postId = form.postId.trim();
+    if (form.action) data.action = form.action;
+    return data;
+  };
+
+  // Live JSON preview
+  const jsonPreview = JSON.stringify({
+    toUserId: form.toUserId || "all",
+    title: form.title || "...",
+    body:  form.body  || "...",
+    data:  buildData(),
+  }, null, 2);
+
+  const handleSend = async () => {
+    if (!form.title.trim() || !form.body.trim()) {
+      setResult({ ok: false, message: "Title και Body είναι υποχρεωτικά." });
+      return;
+    }
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${VERCEL_URL}/send-custom-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toUserId: form.toUserId || "all",
+          title:    form.title.trim(),
+          body:     form.body.trim(),
+          data:     buildData(),
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setResult({ ok: true, message: json.message || "✅ Στάλθηκε!" });
+        setForm(f => ({ ...f, title: "", body: "", postId: "", action: "", type: "" }));
+      } else {
+        setResult({ ok: false, message: json.error || "Κάτι πήγε λάθος." });
+      }
+    } catch (e) {
+      setResult({ ok: false, message: e.message });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  const selectedUser = form.toUserId === "all" ? null : users.find(u => u.id === form.toUserId);
+
+  return (
+    <>
+      <PageHeader icon="📢" title="Notifications" />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
+
+        {/* ── Left: Form ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Recipient */}
+          <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+              Παραλήπτης
+            </div>
+
+            {/* All / Specific toggle */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              {[{ val: "all", label: "📡 Όλοι οι χρήστες" }, { val: "one", label: "👤 Συγκεκριμένος" }].map(opt => (
+                <button
+                  key={opt.val}
+                  onClick={() => { set("toUserId", opt.val === "all" ? "all" : ""); setUserSearch(""); }}
+                  style={{
+                    flex: 1, padding: "9px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${(opt.val === "all" ? form.toUserId === "all" : form.toUserId !== "all") ? C.accent : C.inputBorder}`,
+                    background: (opt.val === "all" ? form.toUserId === "all" : form.toUserId !== "all") ? C.accentBg : "transparent",
+                    color: (opt.val === "all" ? form.toUserId === "all" : form.toUserId !== "all") ? "#a5b4fc" : C.textSecondary,
+                    transition: "all .15s",
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
+
+            {/* User search when "Specific" */}
+            {form.toUserId !== "all" && (
+              <div>
+                <input
+                  className="form-input"
+                  placeholder="Αναζήτηση χρήστη…"
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                />
+                {selectedUser && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: C.accentBg, borderRadius: 8, marginBottom: 8 }}>
+                    <Avatar name={selectedUser.name} />
+                    <span style={{ fontSize: 13, color: "#a5b4fc", fontWeight: 600 }}>{selectedUser.name}</span>
+                    <button onClick={() => set("toUserId", "")} style={{ marginLeft: "auto", background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 16 }}>×</button>
+                  </div>
+                )}
+                {userSearch && !selectedUser && (
+                  <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.inputBorder}`, borderRadius: 8, background: C.inputBg }}>
+                    {filteredUsers.length === 0
+                      ? <div style={{ padding: "10px 14px", fontSize: 13, color: C.textMuted }}>Δεν βρέθηκαν χρήστες</div>
+                      : filteredUsers.map(u => (
+                          <div key={u.id}
+                            onClick={() => { set("toUserId", u.id); setUserSearch(""); }}
+                            style={{ padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.cardBorder}` }}
+                            onMouseEnter={e => e.currentTarget.style.background = C.accentBg}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                          >
+                            <Avatar name={u.name} />
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{u.name}</div>
+                              <div style={{ fontSize: 11, color: C.textMuted }}>{u.email}</div>
+                            </div>
+                          </div>
+                        ))
+                    }
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Content */}
+          <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+              Περιεχόμενο
+            </div>
+            <FormField label="Title *">
+              <input className="form-input" placeholder="π.χ. 🚀 Νέα Ανακοίνωση!" value={form.title} onChange={e => set("title", e.target.value)} />
+            </FormField>
+            <FormField label="Body *">
+              <textarea className="form-input" placeholder="Το κείμενο της ειδοποίησης…" value={form.body} onChange={e => set("body", e.target.value)} style={{ minHeight: 80, resize: "vertical" }} />
+            </FormField>
+          </div>
+
+          {/* Data / Deep Link */}
+          <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+              Deep Link / Data <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(προαιρετικό)</span>
+            </div>
+            <FormField label="Τύπος ειδοποίησης">
+              <select className="form-input" value={form.type} onChange={e => set("type", e.target.value)}
+                style={{ background: C.inputBg, color: C.textPrimary }}>
+                {NOTIF_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Post ID (ανοίγει συγκεκριμένο post)">
+              <input className="form-input" placeholder="π.χ. ABC123xyz" value={form.postId} onChange={e => set("postId", e.target.value)} />
+            </FormField>
+            <FormField label="Action (αν δεν υπάρχει Post ID)">
+              <select className="form-input" value={form.action} onChange={e => set("action", e.target.value)}
+                style={{ background: C.inputBg, color: C.textPrimary }}
+                disabled={!!form.postId}>
+                {DEEP_LINK_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </FormField>
+          </div>
+
+          {/* Send */}
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={handleSend}
+            disabled={sending || !form.title || !form.body || (form.toUserId !== "all" && !form.toUserId)}
+            style={{ width: "100%" }}
+          >
+            {sending ? "Αποστολή…" : form.toUserId === "all" ? "📡 Αποστολή σε όλους" : "📨 Αποστολή"}
+          </button>
+
+          {result && (
+            <div style={{
+              padding: "12px 16px", borderRadius: 10, fontSize: 14, fontWeight: 500,
+              background: result.ok ? "rgba(34,197,94,0.1)" : C.dangerBg,
+              border: `1px solid ${result.ok ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
+              color: result.ok ? "#4ade80" : "#f87171",
+            }}>
+              {result.message}
+            </div>
+          )}
+        </div>
+
+        {/* ── Right: Templates + JSON Preview ── */}
+        <div style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Templates */}
+          <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>
+              ⚡ Templates — 1 click αποστολή
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {NOTIF_TEMPLATES.map((tpl, i) => (
+                <div key={i} style={{
+                  borderRadius: 10, border: `1px solid ${tpl.color}30`,
+                  background: tpl.colorBg, overflow: "hidden",
+                }}>
+                  {/* Header row — load or send */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px" }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.textPrimary }}>{tpl.label}</span>
+                    <button
+                      onClick={() => setForm(f => ({ ...f, ...tpl.form }))}
+                      style={{
+                        padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                        background: "transparent", border: `1px solid ${tpl.color}60`, color: tpl.color,
+                        transition: "all .15s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = tpl.colorBg; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                    >Φόρτωση</button>
+                    <button
+                      onClick={async () => {
+                        if (sending) return;
+                        setSending(true); setResult(null);
+                        try {
+                          const payload = {
+                            toUserId: tpl.form.toUserId || "all",
+                            title: tpl.form.title,
+                            body:  tpl.form.body,
+                            data:  Object.fromEntries(
+                              [["type", tpl.form.type], ["postId", tpl.form.postId], ["action", tpl.form.action]]
+                                .filter(([, v]) => v)
+                            ),
+                          };
+                          const res = await fetch(`${VERCEL_URL}/send-custom-notification`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload),
+                          });
+                          const json = await res.json();
+                          setResult({ ok: res.ok, message: res.ok ? (json.message || "✅ Στάλθηκε!") : (json.error || "Κάτι πήγε λάθος.") });
+                        } catch (e) {
+                          setResult({ ok: false, message: e.message });
+                        } finally { setSending(false); }
+                      }}
+                      disabled={sending}
+                      style={{
+                        padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: sending ? "not-allowed" : "pointer",
+                        background: tpl.color, border: "none", color: "#fff", opacity: sending ? 0.5 : 1,
+                        transition: "opacity .15s",
+                      }}
+                    >{sending ? "…" : "📡 Αποστολή"}</button>
+                  </div>
+                  {/* Preview text */}
+                  <div style={{ padding: "0 14px 10px", borderTop: `1px solid ${tpl.color}20` }}>
+                    <div style={{ fontSize: 11, color: C.textSecondary, marginTop: 8, lineHeight: 1.5 }}>
+                      <span style={{ fontWeight: 600, color: C.textPrimary }}>{tpl.form.title}</span>
+                      <br />
+                      <span style={{ color: C.textMuted }}>{tpl.form.body}</span>
+                    </div>
+                    {tpl.form.action && (
+                      <span style={{ display: "inline-block", marginTop: 6, fontSize: 10, padding: "2px 7px", borderRadius: 99, background: `${tpl.color}20`, color: tpl.color, fontWeight: 600 }}>
+                        action: {tpl.form.action}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* JSON Preview */}
+          <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>
+              📋 JSON Preview
+            </div>
+            <pre style={{
+              margin: 0, padding: "16px", borderRadius: 8, fontSize: 12, lineHeight: 1.7,
+              background: C.inputBg, border: `1px solid ${C.inputBorder}`,
+              color: "#a5b4fc", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
+            }}>
+              {jsonPreview}
+            </pre>
+
+            <div style={{ marginTop: 14, padding: "12px 14px", background: "rgba(99,102,241,0.06)", borderRadius: 8, border: `1px solid rgba(99,102,241,0.15)` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Endpoint</div>
+              <code style={{ fontSize: 11, color: "#a5b4fc", wordBreak: "break-all" }}>
+                POST {VERCEL_URL}/send-custom-notification
+              </code>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </>
   );
 }
