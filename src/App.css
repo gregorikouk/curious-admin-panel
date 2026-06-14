@@ -145,6 +145,7 @@ body {
 }
 .form-input::placeholder { color: #475569; }
 .form-input:disabled { opacity: 0.5; }
+select.form-input { min-height: 44px; padding: 10px 14px; cursor: pointer; }
 
 /* Search */
 .search-wrap { position: relative; margin-bottom: 20px; }

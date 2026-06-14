@@ -1039,68 +1039,81 @@ function Events({ user }) {
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
-const NOTIF_TYPES = [
-  { value: "",                 label: "— Χωρίς τύπο —" },
-  { value: "announcement",    label: "📢 Announcement" },
-  { value: "like",            label: "👍 Like" },
-  { value: "comment",         label: "💬 Comment" },
-  { value: "comment_reply",   label: "💬 Comment Reply" },
-  { value: "like_comment",    label: "❤️ Like Comment" },
-  { value: "mention",         label: "📣 Mention in Comment" },
-  { value: "mention_in_post", label: "📣 Mention in Post" },
-  { value: "voteRG",          label: "🟢🔴 Red/Green Flag Vote" },
-  { value: "voteCONF",        label: "😇😈 Confession Vote" },
-  { value: "scape",           label: "⭐ Scape (selected post)" },
-];
-
 const DEEP_LINK_ACTIONS = [
-  { value: "",                  label: "— Κανένα —" },
-  { value: "create_confession", label: "✍️ Create Confession" },
-  { value: "daily_question",    label: "❓ Daily Question" },
-  { value: "curious_plus",      label: "⭐ Curious+" },
-  { value: "homepage",          label: "🏠 Homepage" },
+  { value: "",                   label: "— Κανένα —" },
+  { value: "homepage",           label: "🏠 Homepage" },
+  { value: "profile",            label: "👤 Profile" },
+  { value: "create_confession",  label: "✍️ Create Confession" },
+  { value: "daily_question",     label: "❓ Daily Question" },
+  { value: "red_flag_green_flag",label: "🚩 Red/Green Flag" },
+  { value: "confession_swipe",   label: "😇 Confession Swipe" },
+  { value: "truth_game",         label: "🎯 2 Truths 1 Lie" },
+  { value: "would_you_rather",   label: "🤔 Would You Rather" },
+  { value: "curious_plus",       label: "⭐ Curious+" },
 ];
 
-// Hardcoded test user (quick-send target)
 const TEST_USER_ID = "v9U9FEnDgFacBJSGKTX5hl0R65g1";
 
 const NOTIF_TEMPLATES = [
   {
-    label: "🧪 Send to Greg (test)",
-    color: "#94a3b8",
-    colorBg: "rgba(148,163,184,0.1)",
-    toUserId: TEST_USER_ID,
-    form: { toUserId: TEST_USER_ID, title: "🧪 Test Notification", body: "Αυτό είναι ένα test notification.", type: "announcement", postId: "", action: "" },
+    label: "🧪 Test → Greg",
+    color: "#64748b",
+    colorBg: "rgba(100,116,139,0.1)",
+    form: { toUserId: TEST_USER_ID, title: "🧪 Test Notification", body: "Αυτό είναι ένα test notification.", postId: "", action: "" },
   },
   {
     label: "📢 Ανακοίνωση",
     color: "#6366f1",
     colorBg: "rgba(99,102,241,0.12)",
-    form: { toUserId: "all", title: "📢 Νέα Ανακοίνωση!", body: "Έχουμε κάτι νέο για εσένα. Άνοιξε το app για να δεις τι γίνεται!", type: "announcement", postId: "", action: "" },
+    form: { toUserId: "all", title: "📢 Νέα Ανακοίνωση!", body: "Έχουμε κάτι νέο για εσένα. Άνοιξε το app για να δεις τι γίνεται!", postId: "", action: "" },
   },
   {
     label: "❓ Daily Question",
     color: "#f59e0b",
     colorBg: "rgba(245,158,11,0.12)",
-    form: { toUserId: "all", title: "❓ Ερώτηση της Ημέρας!", body: "Η ερώτηση της ημέρας σε περιμένει. Μπες και απάντησε τώρα!", type: "announcement", postId: "", action: "daily_question" },
+    form: { toUserId: "all", title: "❓ Ερώτηση της Ημέρας!", body: "Η ερώτηση της ημέρας σε περιμένει. Μπες και απάντησε τώρα!", postId: "", action: "daily_question" },
   },
   {
     label: "🔥 Streak Reminder",
     color: "#ef4444",
     colorBg: "rgba(239,68,68,0.12)",
-    form: { toUserId: "all", title: "🔥 Το streak σου κινδυνεύει!", body: "Δεν έχεις ποστάρει σήμερα. Μη το αφήσεις να σπάσει!", type: "announcement", postId: "", action: "create_confession" },
+    form: { toUserId: "all", title: "🔥 Το streak σου κινδυνεύει!", body: "Δεν έχεις ποστάρει σήμερα. Μη το αφήσεις να σπάσει!", postId: "", action: "create_confession" },
+  },
+  {
+    label: "🚩 Red/Green Flag",
+    color: "#22c55e",
+    colorBg: "rgba(34,197,94,0.1)",
+    form: { toUserId: "all", title: "🚩 Red or Green Flag;", body: "Ψήφισε τώρα — red flag ή green flag;", postId: "", action: "red_flag_green_flag" },
+  },
+  {
+    label: "😇 Confession Swipe",
+    color: "#e879f9",
+    colorBg: "rgba(232,121,249,0.1)",
+    form: { toUserId: "all", title: "😇 Κρίνε μια εξομολόγηση!", body: "Παράδεισος ή Κόλαση; Swipe τώρα!", postId: "", action: "confession_swipe" },
+  },
+  {
+    label: "🎯 2 Truths 1 Lie",
+    color: "#fb923c",
+    colorBg: "rgba(251,146,60,0.1)",
+    form: { toUserId: "all", title: "🎯 2 Αλήθειες 1 Ψέμα!", body: "Μπορείς να μαντέψεις ποιο είναι το ψέμα;", postId: "", action: "truth_game" },
+  },
+  {
+    label: "🤔 Would You Rather",
+    color: "#38bdf8",
+    colorBg: "rgba(56,189,248,0.1)",
+    form: { toUserId: "all", title: "🤔 Would You Rather…", body: "Νέα ερώτηση «Would You Rather» σε περιμένει!", postId: "", action: "would_you_rather" },
   },
   {
     label: "⭐ Curious+",
     color: "#a78bfa",
     colorBg: "rgba(167,139,250,0.12)",
-    form: { toUserId: "all", title: "⭐ Ανακάλυψε το Curious+", body: "Ξεκλείδωσε premium δυνατότητες και απόλαυσε πλήρη πρόσβαση!", type: "announcement", postId: "", action: "curious_plus" },
+    form: { toUserId: "all", title: "⭐ Ανακάλυψε το Curious+", body: "Ξεκλείδωσε premium δυνατότητες και απόλαυσε πλήρη πρόσβαση!", postId: "", action: "curious_plus" },
   },
   {
     label: "🏠 Open Homepage",
     color: "#34d399",
     colorBg: "rgba(52,211,153,0.12)",
-    form: { toUserId: "all", title: "👋 Γεια σου!", body: "Δες τι καινούριο υπάρχει στο CuriousApp σήμερα!", type: "announcement", postId: "", action: "homepage" },
+    form: { toUserId: "all", title: "👋 Γεια σου!", body: "Δες τι καινούριο υπάρχει στο CuriousApp σήμερα!", postId: "", action: "homepage" },
   },
 ];
 
@@ -1110,13 +1123,13 @@ function Notifications() {
     toUserId: "all",
     title: "",
     body: "",
-    type: "",
     postId: "",
     action: "",
   });
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null); // { ok, message }
   const [userSearch, setUserSearch] = useState("");
+  const [confirmSendAll, setConfirmSendAll] = useState(false); // confirm dialog for broadcast
 
   useEffect(() => {
     getDocs(collection(db, "users")).then(snap => {
@@ -1130,16 +1143,13 @@ function Notifications() {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  // Build the data payload that goes in the notification
   const buildData = () => {
     const data = {};
-    if (form.type)   data.type   = form.type;
     if (form.postId) data.postId = form.postId.trim();
     if (form.action) data.action = form.action;
     return data;
   };
 
-  // Helper: send a notification with an arbitrary payload
   const sendPayload = async (payload) => {
     setSending(true); setResult(null);
     try {
@@ -1155,7 +1165,6 @@ function Notifications() {
     } finally { setSending(false); }
   };
 
-  // Live JSON preview
   const jsonPreview = JSON.stringify({
     toUserId: form.toUserId || "all",
     title: form.title || "...",
@@ -1163,18 +1172,26 @@ function Notifications() {
     data:  buildData(),
   }, null, 2);
 
-  const handleSend = async () => {
-    if (!form.title.trim() || !form.body.trim()) {
-      setResult({ ok: false, message: "Title και Body είναι υποχρεωτικά." });
-      return;
-    }
+  const doSend = async () => {
     await sendPayload({
       toUserId: form.toUserId || "all",
       title:    form.title.trim(),
       body:     form.body.trim(),
       data:     buildData(),
     });
-    if (true) setForm(f => ({ ...f, title: "", body: "", postId: "", action: "", type: "" }));
+    setForm(f => ({ ...f, title: "", body: "", postId: "", action: "" }));
+  };
+
+  const handleSend = () => {
+    if (!form.title.trim() || !form.body.trim()) {
+      setResult({ ok: false, message: "Title και Body είναι υποχρεωτικά." });
+      return;
+    }
+    if (form.toUserId === "all") {
+      setConfirmSendAll(true); // show confirm modal
+    } else {
+      doSend();
+    }
   };
 
   const filteredUsers = users.filter(u =>
@@ -1271,26 +1288,20 @@ function Notifications() {
             </FormField>
           </div>
 
-          {/* Data / Deep Link */}
+          {/* Deep Link */}
           <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px 18px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-              Deep Link / Data <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(προαιρετικό)</span>
+              Deep Link <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(προαιρετικό)</span>
             </div>
-            <FormField label="Τύπος ειδοποίησης">
-              <select className="form-input" value={form.type} onChange={e => set("type", e.target.value)}
-                style={{ background: C.inputBg, color: C.textPrimary }}>
-                {NOTIF_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Post ID (ανοίγει συγκεκριμένο post)">
-              <input className="form-input" placeholder="π.χ. ABC123xyz" value={form.postId} onChange={e => set("postId", e.target.value)} />
-            </FormField>
-            <FormField label="Action (αν δεν υπάρχει Post ID)">
+            <FormField label="Action">
               <select className="form-input" value={form.action} onChange={e => set("action", e.target.value)}
                 style={{ background: C.inputBg, color: C.textPrimary }}
                 disabled={!!form.postId}>
                 {DEEP_LINK_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
+            </FormField>
+            <FormField label="Post ID (ανοίγει συγκεκριμένο post — override action)">
+              <input className="form-input" placeholder="π.χ. ABC123xyz" value={form.postId} onChange={e => set("postId", e.target.value)} />
             </FormField>
           </div>
 
@@ -1316,6 +1327,50 @@ function Notifications() {
           )}
         </div>
 
+        {/* ── Confirm send-to-all modal ── */}
+        {confirmSendAll && (
+          <div style={{
+            position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+            justifyContent: "center", zIndex: 9999, padding: 16,
+          }}>
+            <div style={{
+              background: "#1e1e32", border: `1px solid ${C.cardBorder}`, borderRadius: 16,
+              padding: "28px 24px 22px", width: "100%", maxWidth: 380,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+            }}>
+              <div style={{ fontSize: 28, marginBottom: 12, textAlign: "center" }}>📡</div>
+              <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700, color: C.textPrimary, textAlign: "center" }}>
+                Αποστολή σε ΟΛΟΥΣ;
+              </h3>
+              <p style={{ margin: "0 0 8px", fontSize: 14, color: C.textSecondary, lineHeight: 1.6, textAlign: "center" }}>
+                Πρόκειται να στείλεις αυτή την ειδοποίηση σε <strong style={{ color: C.textPrimary }}>όλους τους χρήστες</strong>.
+              </p>
+              <div style={{
+                margin: "0 0 22px", padding: "12px 14px", background: C.inputBg,
+                borderRadius: 10, border: `1px solid ${C.inputBorder}`,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginBottom: 3 }}>{form.title}</div>
+                <div style={{ fontSize: 12, color: C.textSecondary }}>{form.body}</div>
+                {form.action && <div style={{ fontSize: 11, marginTop: 6, color: "#a5b4fc" }}>action: {form.action}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setConfirmSendAll(false)}>
+                  Ακύρωση
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1, background: "#6366f1" }}
+                  onClick={() => { setConfirmSendAll(false); doSend(); }}
+                  disabled={sending}
+                >
+                  {sending ? "Αποστολή…" : "✅ Επιβεβαίωση"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Right: Templates + JSON Preview ── */}
         <div style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 16 }}>
 
@@ -1334,7 +1389,7 @@ function Notifications() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px" }}>
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.textPrimary }}>{tpl.label}</span>
                     <button
-                      onClick={() => setForm(f => ({ ...f, ...tpl.form }))}
+                      onClick={() => { const { ...rest } = tpl.form; setForm(f => ({ ...f, ...rest })); }}
                       style={{
                         padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
                         background: "transparent", border: `1px solid ${tpl.color}60`, color: tpl.color,
@@ -1349,7 +1404,7 @@ function Notifications() {
                         title: tpl.form.title,
                         body:  tpl.form.body,
                         data:  Object.fromEntries(
-                          [["type", tpl.form.type], ["postId", tpl.form.postId], ["action", tpl.form.action]]
+                          [["postId", tpl.form.postId], ["action", tpl.form.action]]
                             .filter(([, v]) => v)
                         ),
                       })}
