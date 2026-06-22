@@ -538,7 +538,8 @@ function Users() {
   const [editingUser, setEditingUser] = useState(null);
   const [newUsername, setNewUsername] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [sortDir, setSortDir] = useState("desc");
+  // "recent" = newest registered first (default), "oldest", "az", "za".
+  const [sortMode, setSortMode] = useState("recent");
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), snapshot => {
@@ -576,12 +577,25 @@ function Users() {
   const named   = filtered.filter(u => u.name && u.name.trim() !== "");
   const unnamed = filtered.filter(u => !u.name || u.name.trim() === "");
 
-  // Sort named users alphabetically or reverse
-  const sortedNamed = [...named].sort((a, b) =>
-    sortDir === "desc"
-      ? (a.name || "").localeCompare(b.name || "")
-      : (b.name || "").localeCompare(a.name || "")
-  );
+  // createdAt may be a Firestore Timestamp, a Date, or missing — coerce to a comparable ms.
+  const tsMs = (u) => {
+    const t = u.createdAt;
+    if (!t) return 0;
+    if (typeof t.toMillis === "function") return t.toMillis();
+    if (t instanceof Date) return t.getTime();
+    if (t.seconds != null) return t.seconds * 1000;
+    return 0;
+  };
+
+  const sortedNamed = [...named].sort((a, b) => {
+    switch (sortMode) {
+      case "az":     return (a.name || "").localeCompare(b.name || "");
+      case "za":     return (b.name || "").localeCompare(a.name || "");
+      case "oldest": return tsMs(a) - tsMs(b);
+      case "recent":
+      default:       return tsMs(b) - tsMs(a);
+    }
+  });
 
   const UserCard = ({ u }) => (
     <div key={u.id} className="card">
@@ -668,13 +682,17 @@ function Users() {
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
         <PageHeader icon="👥" title="Users" count={users.length} />
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
-          style={{ marginBottom: 22, flexShrink: 0 }}
+        <select
+          className="form-input"
+          value={sortMode}
+          onChange={e => setSortMode(e.target.value)}
+          style={{ marginBottom: 22, flexShrink: 0, maxWidth: 220, fontSize: 13 }}
         >
-          {sortDir === "desc" ? "↓ A → Z" : "↑ Z → A"}
-        </button>
+          <option value="recent">↓ Newest registered</option>
+          <option value="oldest">↑ Oldest registered</option>
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+        </select>
       </div>
 
       <div className="search-wrap">
@@ -1223,6 +1241,18 @@ const NOTIF_TEMPLATES = [
     color: "#34d399",
     colorBg: "rgba(52,211,153,0.12)",
     form: { toUserId: "all", title: "👋 Γεια σου!", body: "Δες τι καινούριο υπάρχει στο CuriousApp σήμερα!", postId: "", action: "homepage" },
+  },
+  {
+    label: "👤 Open Profile",
+    color: "#fb7185",
+    colorBg: "rgba(251,113,133,0.12)",
+    form: { toUserId: "all", title: "Δες το προφίλ σου", body: "Έχεις νέα στατιστικά, badges και ιστορικό. Μπες στο προφίλ σου!", postId: "", action: "profile" },
+  },
+  {
+    label: "✏️ Name Change Sheet",
+    color: "#60a5fa",
+    colorBg: "rgba(96,165,250,0.12)",
+    form: { toUserId: "all", title: "Άλλαξε το username σου", body: "Άνοιξε το σχετικό sheet για να στείλεις αίτημα ή να δεις την κατάσταση.", postId: "", action: "name_change" },
   },
 ];
 
