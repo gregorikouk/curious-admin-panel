@@ -1177,6 +1177,7 @@ const DEEP_LINK_ACTIONS = [
   { value: "truth_game",         label: "🎯 2 Truths 1 Lie" },
   { value: "would_you_rather",   label: "🤔 Would You Rather" },
   { value: "curious_plus",       label: "⭐ Curious+" },
+  { value: "name_change",        label: "✏️ Name Change Sheet" },
 ];
 
 const TEST_USER_ID = "v9U9FEnDgFacBJSGKTX5hl0R65g1";
