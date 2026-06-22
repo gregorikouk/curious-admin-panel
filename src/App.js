@@ -195,6 +195,7 @@ function AdminPanel({ user, onLogout }) {
           <SidebarLink to="/admin/events" icon="📅" onClick={closeSidebar}>Events</SidebarLink>
           {isAdmin && <SidebarLink to="/admin/waiting-list" icon="⏳" onClick={closeSidebar}>Waiting List</SidebarLink>}
           {isAdmin && <SidebarLink to="/admin/usernames"    icon="🏷️" onClick={closeSidebar}>Usernames</SidebarLink>}
+          {isAdmin && <SidebarLink to="/admin/legal"        icon="📄" onClick={closeSidebar}>Legal Updates</SidebarLink>}
         </nav>
 
         {/* Role badge */}
@@ -238,6 +239,7 @@ function AdminPanel({ user, onLogout }) {
             <Route path="notifications" element={<Notifications />} />
             <Route path="waiting-list"  element={<WaitingList />} />
             <Route path="usernames"     element={<Usernames />} />
+            <Route path="legal"         element={<LegalUpdates />} />
           </>}
           <Route path="events" element={<Events user={user} />} />
           <Route path="*" element={<Navigate to={isAdmin ? "/admin/users" : "/admin/events"} replace />} />
@@ -1909,6 +1911,125 @@ function Usernames() {
           )}
         </>
       )}
+    </>
+  );
+}
+
+// ─── Legal Updates (Terms / Privacy versioning) ──────────────────────────────
+function LegalUpdates() {
+  const [legal, setLegal] = useState({ termsVersion: 0, privacyVersion: 0, termsUpdatedAt: null, privacyUpdatedAt: null });
+  const [choice, setChoice] = useState("both"); // "terms" | "privacy" | "both"
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const ref = doc(db, "appConfig", "legal");
+      const snap = await getDoc(ref);
+      if (snap.exists()) setLegal({
+        termsVersion: snap.data().termsVersion || 0,
+        privacyVersion: snap.data().privacyVersion || 0,
+        termsUpdatedAt: snap.data().termsUpdatedAt || null,
+        privacyUpdatedAt: snap.data().privacyUpdatedAt || null
+      });
+    })();
+  }, []);
+
+  async function publish() {
+    setLoading(true);
+    setMsg("");
+    try {
+      const ref = doc(db, "appConfig", "legal");
+      const patch = {};
+      if (choice === "terms" || choice === "both") {
+        patch.termsVersion = (legal.termsVersion || 0) + 1;
+        patch.termsUpdatedAt = serverTimestamp();
+      }
+      if (choice === "privacy" || choice === "both") {
+        patch.privacyVersion = (legal.privacyVersion || 0) + 1;
+        patch.privacyUpdatedAt = serverTimestamp();
+      }
+      await setDoc(ref, patch, { merge: true });
+      setLegal(prev => ({ ...prev, ...patch }));
+      setMsg(`✅ Published. Users will be blocked until they re-accept.`);
+    } catch (e) {
+      setMsg(`❌ ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function fmtDate(ts) {
+    if (!ts || !ts.toDate) return "—";
+    return ts.toDate().toLocaleString();
+  }
+
+  const card = {
+    background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, padding: 20,
+  };
+
+  return (
+    <>
+      <div className="page-header">
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.textPrimary, margin: 0 }}>Legal Updates</h1>
+        <p style={{ fontSize: 13, color: C.textSecondary, marginTop: 6 }}>
+          Bump the Terms / Privacy version to force every user to re-accept on next launch.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Terms</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.textPrimary, marginTop: 8 }}>v{legal.termsVersion}</div>
+          <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>Last updated: {fmtDate(legal.termsUpdatedAt)}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Privacy</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: C.textPrimary, marginTop: 8 }}>v{legal.privacyVersion}</div>
+          <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>Last updated: {fmtDate(legal.privacyUpdatedAt)}</div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <h3 style={{ margin: 0, fontSize: 16, color: C.textPrimary }}>Publish update</h3>
+        <p style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>
+          Pick what changed and click Publish. Every user will see a blocking overlay with links
+          to the relevant docs until they tap Accept.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+          {[
+            { id: "terms",   label: "Updated Terms" },
+            { id: "privacy", label: "Updated Privacy" },
+            { id: "both",    label: "Updated both" },
+          ].map(opt => (
+            <label key={opt.id} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+              border: `1px solid ${choice === opt.id ? C.accent : C.cardBorder}`,
+              borderRadius: 10, cursor: "pointer",
+              background: choice === opt.id ? C.accentBg : "transparent"
+            }}>
+              <input
+                type="radio"
+                checked={choice === opt.id}
+                onChange={() => setChoice(opt.id)}
+              />
+              <span style={{ color: C.textPrimary, fontWeight: 500 }}>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+
+        <button
+          className="btn btn-primary"
+          disabled={loading}
+          onClick={publish}
+          style={{ marginTop: 18 }}
+        >
+          {loading ? "Publishing…" : "Publish update"}
+        </button>
+
+        {msg && <div style={{ marginTop: 12, fontSize: 13, color: msg.startsWith("✅") ? "#10b981" : C.danger }}>{msg}</div>}
+      </div>
     </>
   );
 }
