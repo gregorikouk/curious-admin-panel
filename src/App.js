@@ -922,7 +922,7 @@ function Categories() {
 // ─── Events ──────────────────────────────────────────────────────────────────
 function Events({ user }) {
   const isAdmin = user?.role === "admin";
-  const emptyForm = { title: "", datetime: "", location: "", mapsUrl: "", info: "", cost: "", categoryId: "" };
+  const emptyForm = { title: "", datetime: "", location: "", mapsUrl: "", info: "", cost: "", categoryId: "", latitude: "", longitude: "" };
   const [events, setEvents] = useState([]);
   const [businessCategories, setBusinessCategories] = useState([]);
   const [sortDir, setSortDir] = useState("desc");
@@ -974,7 +974,7 @@ function Events({ user }) {
       const pad = n => String(n).padStart(2, "0");
       dt = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
-    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", mapsUrl: ev.mapsUrl || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "", categoryId: ev.categoryId || "" });
+    setForm({ title: ev.title || "", datetime: dt, location: ev.location || "", mapsUrl: ev.mapsUrl || "", info: ev.info || "", cost: ev.cost != null ? String(ev.cost) : "", categoryId: ev.categoryId || "", latitude: ev.latitude != null ? String(ev.latitude) : "", longitude: ev.longitude != null ? String(ev.longitude) : "" });
     setImageFile(null); setImagePreview(null); setExistingImageUrl(ev.imageUrl || null); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1002,6 +1002,8 @@ function Events({ user }) {
         cost: form.cost.trim() === "" ? null : Number(form.cost),
         imageUrl: imageUrl || null,
         categoryId: form.categoryId || null,
+        latitude:  form.latitude.trim()  === "" ? null : Number(form.latitude),
+        longitude: form.longitude.trim() === "" ? null : Number(form.longitude),
       };
       if (imagePublicId) payload.imagePublicId = imagePublicId;
       if (editingId) {
@@ -1057,6 +1059,42 @@ function Events({ user }) {
               onChange={e => setForm({ ...form, location: e.target.value })}
               placeholder="e.g. 15 Ermou St, Athens" required />
           </FormField>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 16, alignItems: "end", marginBottom: 14 }}>
+            <FormField label="Latitude (για Nearby search)">
+              <input className="form-input" type="number" step="any" value={form.latitude}
+                onChange={e => setForm({ ...form, latitude: e.target.value })}
+                placeholder="e.g. 37.9838" />
+            </FormField>
+            <FormField label="Longitude">
+              <input className="form-input" type="number" step="any" value={form.longitude}
+                onChange={e => setForm({ ...form, longitude: e.target.value })}
+                placeholder="e.g. 23.7275" />
+            </FormField>
+            <button type="button" className="btn btn-secondary" style={{ height: 38 }}
+              onClick={async () => {
+                const q = form.location.trim();
+                if (!q) { setError("Συμπλήρωσε πρώτα το Location."); return; }
+                setError("");
+                try {
+                  // Nominatim — free OpenStreetMap geocoder. Respect their rate limit: 1 req/sec.
+                  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, {
+                    headers: { "Accept-Language": "el,en" }
+                  });
+                  const data = await res.json();
+                  if (data && data.length > 0) {
+                    setForm(f => ({ ...f, latitude: data[0].lat, longitude: data[0].lon }));
+                  } else {
+                    setError("Δεν βρέθηκαν συντεταγμένες για αυτό το address. Δοκίμασε πιο συγκεκριμένο ή βάλε χειροκίνητα.");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  setError("Αποτυχία geocoding. Δοκίμασε ξανά ή βάλε χειροκίνητα.");
+                }
+              }}>
+              📍 Get coordinates
+            </button>
+          </div>
 
           <FormField label="Google Maps Link (προαιρετικό)">
             <input className="form-input" type="url" value={form.mapsUrl}
